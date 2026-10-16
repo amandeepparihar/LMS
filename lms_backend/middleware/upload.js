@@ -1,30 +1,44 @@
-var multer = require("multer");
-var path = require("path");
+import fs from "node:fs";
+import path from "node:path";
+import multer from "multer";
+import { UPLOAD_DIR } from "../config/path.js";
 
-var storage = multer.diskStorage({
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, "..", "public", "uploads"));
+    cb(null, UPLOAD_DIR);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + file.originalname);
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    const base = path
+      .basename(file.originalname, path.extname(file.originalname))
+      .replace(/[^a-zA-Z0-9]/g, "_");
+
+    cb(null, `${base}_${Date.now()}${ext}`);
   },
 });
 
 function fileFilter(req, file, cb) {
-  var allowed = [".jpg", ".jpeg", ".png"];
-  var ext = path.extname(file.originalname).toLowerCase();
+  const allowed = [".jpg", ".jpeg", ".png"];
+  const ext = path.extname(file.originalname).toLowerCase();
 
   if (allowed.indexOf(ext) === -1) {
+    return cb(new Error("Only image files are allowed"));
+  }
+
+  if (!file.mimetype.startsWith("image/")) {
     return cb(new Error("Only image files are allowed"));
   }
 
   cb(null, true);
 }
 
-var upload = multer({
+const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 });
 
-module.exports = upload;
+export default upload;

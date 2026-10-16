@@ -1,71 +1,105 @@
-var path = require("path");
-var bcrypt = require("bcrypt");
-var User = require("../models/user.model");
-var jwt = require("jsonwebtoken");
-
-//login page
-exports.loginPage = function (req, res) {
-  res.sendFile(path.join(__dirname, "..", "html", "login.html"));
-};
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
+import { User } from "../models/index.js";
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 //login
-exports.login = async function (req, res) {
-  var email = req.body.email;
-  var password = req.body.password;
+export const login = async function (req, res) {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
 
   try {
-    var user = await User.findOne({ where: { email: email } });
+    const user = await User.findOne({ where: { email: email } });
 
-    if (!user) {
-      return res.redirect("/login.html?error=1");
+    if (!user || !user.password) {
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    var match = await bcrypt.compare(password, user.password);
-
-    // console.log("Password match:", match);
+    const match = await bcrypt.compare(password, user.password);
 
     if (!match) {
-      return res.redirect("/login.html?error=1");
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    //generating jwt token
     const payload = {
-      email: user.email,
       id: user.id,
       name: user.name,
+      email: user.email,
     };
+
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: "2h",
+      expiresIn: "7d",
     });
 
-    req.session.userId = user.id;
-    req.session.name = user.name;
-    req.session.email = user.email;
-    req.session.token = token;
-
-    console.log("token -> ", token);
-
-    // console.log('LOGIN  ->', req.sessionID, req.session.userId);
-    res.redirect("/book-list.html");
+    console.log("Token -> ", token);
+    return res.json({
+      success: true,
+      message: "Login successfully",
+      data: { name: user.name, email: user.email },
+    });
   } catch (error) {
     console.error(error.message);
-    res.status(500).send("Something went wrong");
+    res.status(500).json({ message: "Something went wrong" });
   }
 };
 
-//logout
-exports.logout = async function (req, res) {
+//google login
+export const googleLogin = async function (req, res) {
+  const { idToken } = req.body;
+
+  if (!idToken) {
+    return res.status(400).json({ message: "idToken is required" });
+  }
+
   try {
-    req.session.userId = undefined;
-    req.session.name = undefined;
-    req.session.email = undefined;
-    req.session.token = undefined;
-    return res.status(200).json({
+    const ticket = await googleClient.verifyIdToken({
+      idToken: idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const googleId = payload.sub;
+
+    let user = await User.findOne({ where: { googleId: googleId } });
+
+    if (!user) {
+      user = await User.findOne({ where: { email: payload.email } });
+
+      if (user) {
+        user.googleId = googleId;
+        await user.save();
+      } else {
+        user = await User.create({
+          name: payload.name,
+          email: payload.email,
+          googleId: googleId,
+        });
+      }
+    }
+
+    const jwtpayload = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    };
+
+    const token = jwt.sign(jwtpayload, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    console.log("Token -> ", token);
+
+    return res.json({
       success: true,
-      message: "Logout successfully",
+      message: "Login successfully",
+      data: { name: user.name, email: user.email },
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).send("Something Went wrong while logout");
+    return res.status(401).json({ message: "Invalid Google token" });
   }
 };

@@ -1,7 +1,7 @@
-var { DataTypes } = require("sequelize");
-var { sequelize } = require("../config/db");
+import { DataTypes } from "sequelize";
+import { sequelize } from "../config/db.js";
 
-var Student = sequelize.define(
+const Student = sequelize.define(
   "Student",
   {
     name: {
@@ -41,4 +41,4 @@ var Student = sequelize.define(
   },
 );
 
-module.exports = Student;
+export default Student;

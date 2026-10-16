@@ -1,27 +1,14 @@
-var express = require("express");
-var { requireLogin, auth } = require("../middleware/auth");
-var bookController = require("../controllers/bookController");
-const upload = require("../middleware/upload");
-var router = express.Router();
+import express from "express";
+import { auth } from "../middleware/auth.js";
+import upload from "../middleware/upload.js";
+import * as bookController from "../controllers/bookController.js";
 
-router.get("/", requireLogin, bookController.getBooks);
-router.get("/:id", requireLogin, bookController.getBookById);
-router.post(
-  "/",
-  requireLogin,
-  auth,
-  upload.single("bookCover"),
-  bookController.createBook,
-);
+const router = express.Router();
 
-router.put(
-  "/:id",
-  requireLogin,
-  auth,
-  upload.single("bookCover"),
-  bookController.updateBook,
-);
+router.get("/", auth, bookController.getBooks);
+router.get("/:id", auth, bookController.getBookById);
+router.post("/", auth, upload.single("bookCover"), bookController.createBook);
+router.put("/:id", auth, upload.single("bookCover"), bookController.updateBook);
+router.delete("/:id", auth, bookController.deleteBook);
 
-router.delete("/:id", requireLogin, auth, bookController.deleteBook);
-
-module.exports = router;
+export default router;

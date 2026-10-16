@@ -1,7 +1,7 @@
-var { DataTypes } = require("sequelize");
-var { sequelize } = require("../config/db");
+import { DataTypes } from "sequelize";
+import { sequelize } from "../config/db.js";
 
-var Book = sequelize.define(
+const Book = sequelize.define(
   "Book",
   {
     bookCover: {
@@ -19,9 +19,17 @@ var Book = sequelize.define(
     isbn: {
       type: DataTypes.STRING(20),
       allowNull: false,
+      unique: true,
+    },
+    quantity: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
     },
   },
-  { tableName: "books", timestamps: true },
+  {
+    tableName: "books",
+    timestamps: true,
+  },
 );
 
-module.exports = Book;
+export default Book;

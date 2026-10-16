@@ -1,7 +1,7 @@
-var { DataTypes } = require("sequelize");
-var { sequelize } = require("../config/db");
+import { DataTypes } from "sequelize";
+import { sequelize } from "../config/db.js";
 
-var Issue = sequelize.define(
+const Issue = sequelize.define(
   "Issue",
   {
     bookId: {
@@ -30,7 +30,15 @@ var Issue = sequelize.define(
   {
     tableName: "issues",
     timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ["bookId"],
+        where: { status: "issued" },
+        name: "issues_active_book_unique",
+      },
+    ],
   },
 );
 
-module.exports = Issue;
+export default Issue;

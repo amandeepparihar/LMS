@@ -1,8 +1,8 @@
-var { Issue, Book, Student } = require("../models");
+import { Issue, Book, Student } from "../models/index.js";
 
 //get all issues
-exports.getIssues = async function (req, res) {
-  var where = {};
+export const getIssues = async function (req, res) {
+  const where = {};
 
   if (req.query.bookId) {
     where.bookId = req.query.bookId;
@@ -12,13 +12,17 @@ exports.getIssues = async function (req, res) {
     where.studentId = req.query.studentId;
   }
 
+  if (req.query.status) {
+    where.status = req.query.status;
+  }
+
   try {
-    var issues = await Issue.findAll({
+    const issues = await Issue.findAll({
       where: where,
       include: [
         { model: Book, attributes: ["id", "bookname", "isbn"] },
         { model: Student, attributes: ["id", "name", "rollno"] },
-      ],  
+      ],
       order: [["id", "ASC"]],
     });
 
@@ -36,9 +40,9 @@ exports.getIssues = async function (req, res) {
 };
 
 //get issue by id
-exports.getIssueById = async function (req, res) {
+export const getIssueById = async function (req, res) {
   try {
-    var issue = await Issue.findByPk(req.params.id, {
+    const issue = await Issue.findByPk(req.params.id, {
       include: [
         { model: Book, attributes: ["id", "bookname", "isbn"] },
         { model: Student, attributes: ["id", "name", "rollno"] },
@@ -64,10 +68,9 @@ exports.getIssueById = async function (req, res) {
   }
 };
 
-//create issue
-exports.createIssue = async function (req, res) {
-  var bookId = req.body.bookId;
-  var studentId = req.body.studentId;
+//create issue -> student issues a book
+export const createIssue = async function (req, res) {
+  const { bookId, studentId } = req.body;
 
   if (!bookId || !studentId) {
     return res
@@ -76,7 +79,7 @@ exports.createIssue = async function (req, res) {
   }
 
   try {
-    var book = await Book.findByPk(bookId);
+    const book = await Book.findByPk(bookId);
 
     if (!book) {
       return res
@@ -84,7 +87,7 @@ exports.createIssue = async function (req, res) {
         .json({ success: false, message: "Book not found" });
     }
 
-    var student = await Student.findByPk(studentId);
+    const student = await Student.findByPk(studentId);
 
     if (!student) {
       return res
@@ -92,18 +95,23 @@ exports.createIssue = async function (req, res) {
         .json({ success: false, message: "Student not found" });
     }
 
-    var exists = await Issue.findOne({
-      where: { bookId: bookId, studentId: studentId, status: "issued" },
+    const exists = await Issue.findOne({
+      where: { bookId: bookId, status: "issued" },
+      include: [{ model: Student, attributes: ["id", "name"] }],
     });
 
+    console.log("exist student -> ", exists);
+
     if (exists) {
-      return res.status(400).json({
-        success: false,
-        message: "This book is already issued to this student",
-      });
+      const message =
+        exists.studentId === Number(studentId)
+          ? "This book is already issued to this student"
+          : `This book is already issued to ${exists.Student.name}`;
+
+      return res.status(400).json({ success: false, message: message });
     }
 
-    var issue = await Issue.create({
+    const issue = await Issue.create({
       bookId: bookId,
       studentId: studentId,
     });
@@ -115,6 +123,14 @@ exports.createIssue = async function (req, res) {
     });
   } catch (error) {
     console.error(error.message);
+
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return res.status(400).json({
+        success: false,
+        message: "This book is already issued",
+      });
+    }
+
     return res
       .status(500)
       .json({ success: false, message: "Something went wrong" });
@@ -122,9 +138,9 @@ exports.createIssue = async function (req, res) {
 };
 
 //return issue book
-exports.returnIssue = async function (req, res) {
+export const returnIssue = async function (req, res) {
   try {
-    var issue = await Issue.findByPk(req.params.id);
+    const issue = await Issue.findByPk(req.params.id);
 
     if (!issue) {
       return res
@@ -156,14 +172,21 @@ exports.returnIssue = async function (req, res) {
 };
 
 //delete issue
-exports.deleteIssue = async function (req, res) {
+export const deleteIssue = async function (req, res) {
   try {
-    var issue = await Issue.findByPk(req.params.id);
+    const issue = await Issue.findByPk(req.params.id);
 
     if (!issue) {
       return res
         .status(404)
         .json({ success: false, message: "Issue not found" });
+    }
+
+    if (issue.status === "issued") {
+      return res.status(400).json({
+        success: false,
+        message: "Can not delete the issue as the book is not returned",
+      });
     }
 
     await issue.destroy();

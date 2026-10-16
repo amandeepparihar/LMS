@@ -1,27 +1,15 @@
-var express = require("express");
-var { requireLogin, auth } = require("../middleware/auth");
-var studentController = require("../controllers/studentController");
-const upload = require("../middleware/upload");
-var router = express.Router();
+import express from "express";
+import { auth } from "../middleware/auth.js";
+import upload from "../middleware/upload.js";
+import * as studentController from "../controllers/studentController.js";
 
-router.get("/", requireLogin, studentController.getStudents);
-router.get("/:id", requireLogin, studentController.getStudentById);
+const router = express.Router();
 
-router.post(
-  "/",
-  requireLogin,
-  auth,
-  upload.single("photo"),
-  studentController.createStudent,
-);
+router.get("/", auth, studentController.getStudents);
+router.get("/export", auth, studentController.exportStudents);
+router.get("/:id", auth, studentController.getStudentById);
+router.get("/:id/photo", auth, studentController.downloadStudentPhoto);
+router.post("/", auth, upload.single("photo"), studentController.createStudent);
+router.delete("/:id", auth, studentController.deleteStudent);
 
-// router.put(
-//   "/:id",
-//   requireLogin,
-//   upload.single("photo"),
-//   studentController.updateStudent,
-// );
-
-router.delete("/:id", requireLogin, auth, studentController.deleteStudent);
-
-module.exports = router;
+export default router;

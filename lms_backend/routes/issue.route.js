@@ -1,12 +1,13 @@
-var express = require("express");
-var { requireLogin, auth } = require("../middleware/auth");
-var issueController = require("../controllers/issueController");
-var router = express.Router();
+import express from "express";
+import { auth } from "../middleware/auth.js";
+import * as issueController from "../controllers/issueController.js";
 
-router.get("/", requireLogin, issueController.getIssues);
-router.get("/:id", requireLogin, issueController.getIssueById);
-router.post("/", requireLogin, auth, issueController.createIssue);
-router.put("/:id/return", requireLogin, auth, issueController.returnIssue);
-router.delete("/:id", requireLogin, auth, issueController.deleteIssue);
+const router = express.Router();
 
-module.exports = router;
+router.get("/", auth, issueController.getIssues);
+router.get("/:id", auth, issueController.getIssueById);
+router.post("/", auth, issueController.createIssue);
+router.put("/:id/return", auth, issueController.returnIssue);
+router.delete("/:id", auth, issueController.deleteIssue);
+
+export default router;

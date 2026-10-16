@@ -1,9 +1,28 @@
-var Student = require("../models/student.model");
+import fs from "node:fs";
+import path from "node:path";
+import ExcelJS from "exceljs";
+import { Student } from "../models/index.js";
+import { UPLOAD_DIR } from "../config/path.js";
+
+function removeUpload(filename) {
+  if (!filename) {
+    return;
+  }
+
+  fs.unlink(path.join(UPLOAD_DIR, filename), (err) => {
+    if (err) {
+      console.log("Error deleting Photo: ", err);
+      return;
+    }
+
+    console.log("Photo deleted successfully");
+  });
+}
 
 //getallStudents
-exports.getStudents = async function (req, res) {
+export const getStudents = async function (req, res) {
   try {
-    var students = await Student.findAll({ order: [["id", "ASC"]] });
+    const students = await Student.findAll({ order: [["id", "ASC"]] });
 
     res.json({
       success: true,
@@ -17,9 +36,9 @@ exports.getStudents = async function (req, res) {
 };
 
 //getStudent by id
-exports.getStudentById = async function (req, res) {
+export const getStudentById = async function (req, res) {
   try {
-    var student = await Student.findByPk(req.params.id);
+    const student = await Student.findByPk(req.params.id);
 
     if (!student) {
       return res
@@ -39,34 +58,47 @@ exports.getStudentById = async function (req, res) {
 };
 
 //create a student
-exports.createStudent = async function (req, res) {
-  var name = req.body.name;
-  var rollno = req.body.rollno;
-  var phoneno = req.body.phoneno;
-  var photo = req.file ? req.file.filename : null;
-  var country = req.body.country;
-  var state = req.body.state;
-  var city = req.body.city;
-
-  // console.log("req.file -> ",req.file);
+export const createStudent = async function (req, res) {
+  const { name, rollno, phoneno, country, state, city } = req.body;
+  const photo = req.file ? req.file.filename : null;
 
   if (!name || !rollno || !phoneno || !country || !state || !city) {
+    removeUpload(photo);
     return res
       .status(400)
       .json({ success: false, message: "All fields are required" });
   }
 
+  if (!photo) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Photo is required" });
+  }
+
   try {
-    var exists = await Student.findOne({ where: { rollno: rollno } });
+    const exists = await Student.findOne({ where: { rollno: rollno } });
 
     if (exists) {
+      removeUpload(photo);
       return res.status(400).json({
         success: false,
-        message: "Student with this roll no already exists",
+        message: "Student with this roll number already exists",
       });
     }
 
-    var student = await Student.create({
+    const phoneExists = await Student.findOne({
+      where: { phoneno: phoneno },
+    });
+
+    if (phoneExists) {
+      removeUpload(photo);
+      return res.status(400).json({
+        success: false,
+        message: "Student with this phone number already exists",
+      });
+    }
+
+    const student = await Student.create({
       name: name,
       rollno: rollno,
       phoneno: phoneno,
@@ -83,68 +115,15 @@ exports.createStudent = async function (req, res) {
     });
   } catch (error) {
     console.error(error.message);
+    removeUpload(photo);
     res.status(500).json({ success: false, message: "Something went wrong" });
   }
 };
 
-// update a student
-// exports.updateStudent = async function (req, res) {
-//   var name = req.body.name;
-//   var rollno = req.body.rollno;
-//   var phoneno = req.body.phoneno;
-//   var photo = req.file ? req.file.filename : null;
-//   var country = req.body.country;
-//   var state = req.body.state;
-//   var city = req.body.city;
-
-//   if (!name || !rollno || !phoneno || !country || !state || !city) {
-//     return res
-//       .status(400)
-//       .json({ success: false, message: "All fields are required" });
-//   }
-
-//   try {
-//     var student = await Student.findByPk(req.params.id);
-
-//     if (!student) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Student not found" });
-//     }
-
-//     var exists = await Student.findOne({ where: { rollno: rollno } });
-
-//     if (exists && exists.id !== student.id) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Student with this roll no already exists",
-//       });
-//     }
-
-//     student.name = name;
-//     student.rollno = rollno;
-//     student.phoneno = phoneno;
-//     student.photo = photo;
-//     student.country = country;
-//     student.state = state;
-//     student.city = city;
-//     await student.save();
-
-//     res.json({
-//       success: true,
-//       message: "Student updated successfully",
-//       data: student,
-//     });
-//   } catch (error) {
-//     console.error(error.message);
-//     res.status(500).json({ success: false, message: "Something went wrong" });
-//   }
-// };
-
-//delete a student
-exports.deleteStudent = async function (req, res) {
+//download the photo of a student
+export const downloadStudentPhoto = async function (req, res) {
   try {
-    var student = await Student.findByPk(req.params.id);
+    const student = await Student.findByPk(req.params.id);
 
     if (!student) {
       return res
@@ -152,7 +131,87 @@ exports.deleteStudent = async function (req, res) {
         .json({ success: false, message: "Student not found" });
     }
 
+    const filePath = path.join(UPLOAD_DIR, student.photo);
+
+    if (!student.photo || !fs.existsSync(filePath)) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Photo not found" });
+    }
+
+    const ext = path.extname(student.photo);
+
+    return res.download(filePath, `${student.rollno}${ext}`);
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Something went wrong" });
+  }
+};
+
+//export the student list to excel
+export const exportStudents = async function (req, res) {
+  try {
+    const students = await Student.findAll({ order: [["id", "ASC"]] });
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Students");
+
+    sheet.columns = [
+      { header: "Id", key: "id", width: 8 },
+      { header: "Student Name", key: "name", width: 25 },
+      { header: "Roll No", key: "rollno", width: 15 },
+      { header: "Phone No", key: "phoneno", width: 18 },
+      { header: "Country", key: "country", width: 18 },
+      { header: "State", key: "state", width: 18 },
+      { header: "City", key: "city", width: 18 },
+    ];
+
+    sheet.getRow(1).font = { bold: true };
+
+    students.forEach(function (student) {
+      sheet.addRow({
+        id: student.id,
+        name: student.name,
+        rollno: student.rollno,
+        phoneno: student.phoneno,
+        country: student.country,
+        state: student.state,
+        city: student.city,
+      });
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="students.xlsx"',
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Something went wrong" });
+  }
+};
+
+//delete a student
+export const deleteStudent = async function (req, res) {
+  try {
+    const student = await Student.findByPk(req.params.id);
+
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
+    }
+
+    const photo = student.photo;
+
     await student.destroy();
+    removeUpload(photo);
 
     res.json({
       success: true,
@@ -160,7 +219,16 @@ exports.deleteStudent = async function (req, res) {
       data: null,
     });
   } catch (error) {
+    // console.log("error -> ", error);
     console.error(error.message);
+
+    if (error.original.constraint === "issues_studentId_fkey") {
+      return res.status(409).json({
+        success: false,
+        message: "Cannot delete a student who has issued books",
+      });
+    }
+
     res.status(500).json({ success: false, message: "Something went wrong" });
   }
 };
