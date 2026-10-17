@@ -5,7 +5,7 @@ import * as issueController from "../controllers/issueController.js";
 const router = express.Router();
 
 router.get("/", auth, issueController.getIssues);
-router.get("/:id", auth, issueController.getIssueById);
+router.get("/:id", auth, issueController.getIssueBySidBid);
 router.post("/", auth, issueController.createIssue);
 router.put("/:id/return", auth, issueController.returnIssue);
 router.delete("/:id", auth, issueController.deleteIssue);

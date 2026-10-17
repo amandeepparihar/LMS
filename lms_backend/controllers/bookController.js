@@ -34,7 +34,7 @@ function removeUpload(filename) {
 //getbooks
 export const getBooks = async function (req, res) {
   try {
-    const books = await Book.findAll({ order: [["id", "ASC"]] });
+    const books = await Book.findAll({ order: [["id", "DESC"]] });
 
     return res.status(200).json({
       success: true,
@@ -86,9 +86,9 @@ export const createBook = async function (req, res) {
 
     if (exists) {
       removeUpload(bookCover);
-      return res
-        .status(400)
-        .json({ message: "Book with this ISBN already exists" });
+      return res.status(400).json({
+        message: "Book with this ISBN already exists",
+      });
     }
 
     const book = await Book.create({

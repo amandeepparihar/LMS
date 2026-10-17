@@ -23,7 +23,7 @@ export const getIssues = async function (req, res) {
         { model: Book, attributes: ["id", "bookname", "isbn"] },
         { model: Student, attributes: ["id", "name", "rollno"] },
       ],
-      order: [["id", "ASC"]],
+      order: [["id", "DESC"]],
     });
 
     return res.json({
@@ -40,25 +40,31 @@ export const getIssues = async function (req, res) {
 };
 
 //get issue by id
-export const getIssueById = async function (req, res) {
+export const getIssueBySidBid = async function (req, res) {
   try {
-    const issue = await Issue.findByPk(req.params.id, {
+    const { bookId, studentId } = req.query;
+
+    const where = {};
+    if (bookId) {
+      where.bookId = bookId;
+    }
+    if (studentId) {
+      where.studentId = studentId;
+    }
+
+    const issues = await Issue.findAll({
+      where: where,
       include: [
         { model: Book, attributes: ["id", "bookname", "isbn"] },
         { model: Student, attributes: ["id", "name", "rollno"] },
       ],
+      order: [["id", "DESC"]],
     });
-
-    if (!issue) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Issue not found" });
-    }
 
     return res.json({
       success: true,
       message: "Issue fetched successfully",
-      data: issue,
+      data: issues,
     });
   } catch (error) {
     console.error(error.message);

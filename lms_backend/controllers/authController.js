@@ -35,11 +35,11 @@ export const login = async function (req, res) {
       expiresIn: "7d",
     });
 
-    console.log("Token -> ", token);
+    // console.log("Token -> ", token);
     return res.json({
       success: true,
       message: "Login successfully",
-      data: { name: user.name, email: user.email },
+      data: { name: user.name, email: user.email, token: token },
     });
   } catch (error) {
     console.error(error.message);
