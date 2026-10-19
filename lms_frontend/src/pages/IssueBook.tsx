@@ -82,7 +82,6 @@ export default function IssueBook() {
       const data = axios.isAxiosError(err) ? err.response?.data : undefined;
       const message = data?.message ?? "Couldn't issue that book.";
 
-      // "already issued to X" is about the book, so show it on that field
       if (data?.errField === "bookId") {
         setError("bookId", { message }, { shouldFocus: true });
         return;
@@ -138,7 +137,7 @@ export default function IssueBook() {
                   htmlFor="studentId"
                   className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
                 >
-                  Student Name
+                  Student Name <span className="text-red-600">*</span>
                 </label>
                 <div className="col-span-12 sm:col-span-6">
                   <select
@@ -168,7 +167,7 @@ export default function IssueBook() {
                   htmlFor="bookId"
                   className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
                 >
-                  Book Name
+                  Book Name <span className="text-red-600">*</span>
                 </label>
                 <div className="col-span-12 sm:col-span-6">
                   <select
@@ -198,7 +197,7 @@ export default function IssueBook() {
                   htmlFor="issuedate"
                   className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
                 >
-                  Issue Date
+                  Issue Date <span className="text-red-600">*</span>
                 </label>
                 <div className="col-span-12 sm:col-span-6">
                   <input

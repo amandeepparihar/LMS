@@ -44,10 +44,10 @@ export default function Login() {
 
     try {
       const res = await api.post("/auth/google", { idToken });
-      console.log("res -> ", res);
+      // console.log("res -> ", res);
       localStorage.setItem("token", res.data.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.data.user));
-      localStorage.setItem("name", JSON.stringify(res.data.data.name));
+      localStorage.setItem("user", res.data.data.email);
+      localStorage.setItem("name", res.data.data.name);
 
       navigate("/books");
     } catch (err) {

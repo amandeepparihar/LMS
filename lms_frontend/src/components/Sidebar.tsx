@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 
 const links = [
   { to: "/books", label: "Books" },
@@ -9,8 +9,13 @@ const links = [
 export default function Sidebar() {
   return (
     <aside className="hidden w-60 shrink-0 flex-col bg-binding text-white md:flex bg-gray-950">
-      <div className="border-b border-white px-6 py-[17.5px]">
-        <p className="leading-tight font-semibold text-yellow-500">Library Management</p>
+      <div className="border-b border-white px-6 py-[15.5px]">
+        <Link
+          to={"/books"}
+          className="leading-tight font-semibold text-yellow-500"
+        >
+          Library Management
+        </Link>
       </div>
 
       <nav className="flex-1 py-4">

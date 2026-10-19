@@ -8,7 +8,6 @@ import {
   ChevronsUpDown,
   Download,
   FileSpreadsheet,
-  Home,
   Plus,
   Search,
   Trash2,
@@ -119,7 +118,6 @@ export default function StudentList() {
       const url = URL.createObjectURL(res.data);
       const link = document.createElement("a");
       link.href = url;
-      // the api names the file after the roll number, keep the extension
       link.download = `${student.rollno}${student.photo?.slice(student.photo.lastIndexOf(".")) ?? ".jpg"}`;
       link.click();
       URL.revokeObjectURL(url);
@@ -224,18 +222,11 @@ export default function StudentList() {
   const rows = table.getRowModel().rows;
 
   return (
-    <div className="px-6 py-6">
-      <div className="mb-5">
-        <h5 className="mb-2 text-lg font-semibold text-slate-800">
-          Student List
-        </h5>
-        <nav className="flex items-center gap-2 text-sm text-slate-500">
-          <Link to="/books" className="hover:text-slate-700">
-            <Home className="h-4 w-4" />
-          </Link>
-          <span className="text-slate-300">/</span>
-          <span className="text-slate-700">Student List</span>
-        </nav>
+    <div className="px-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-4">
+          Students
+        </h1>
       </div>
 
       {error && (

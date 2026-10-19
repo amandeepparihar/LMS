@@ -31,7 +31,6 @@ export default function AddBook() {
   const onSubmit = async (values: BookForm) => {
     setApiError("");
 
-    // the api takes multipart because of the cover image
     const form = new FormData();
     form.append("bookname", values.bookname.trim());
     form.append("author", values.author.trim());

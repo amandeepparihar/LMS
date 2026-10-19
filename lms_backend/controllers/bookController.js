@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Book } from "../models/index.js";
+import { Book, Issue, sequelize } from "../models/index.js";
 import { UPLOAD_DIR } from "../config/path.js";
 import mailSender from "../utils/mailSender.util.js";
 
@@ -151,7 +151,6 @@ export const updateBook = async function (req, res) {
     book.author = author;
     book.isbn = isbn;
 
-    // only replace the cover when a new file was uploaded
     if (bookCover) {
       book.bookCover = bookCover;
     }
@@ -175,16 +174,35 @@ export const updateBook = async function (req, res) {
 
 //deletebook
 export const deleteBook = async function (req, res) {
+  const t = await sequelize.transaction();
+
   try {
-    const book = await Book.findByPk(req.params.id);
+    const book = await Book.findByPk(req.params.id, { transaction: t });
 
     if (!book) {
+      await t.rollback();
       return res.status(404).json({ message: "Book not found" });
+    }
+
+    const active = await Issue.findOne({
+      where: { bookId: book.id, status: "issued" },
+      transaction: t,
+    });
+
+    if (active) {
+      await t.rollback();
+      return res.status(409).json({
+        message: "Cannot delete a book that is currently issued",
+      });
     }
 
     const cover = book.bookCover;
 
-    await book.destroy();
+    //deleing history with the book
+    await Issue.destroy({ where: { bookId: book.id }, transaction: t });
+    await book.destroy({ transaction: t });
+
+    await t.commit();
     removeUpload(cover);
 
     return res.json({
@@ -193,15 +211,7 @@ export const deleteBook = async function (req, res) {
       data: null,
     });
   } catch (error) {
-    // console.log("error -> ", error);
-    console.error(error.message);
-
-    if (error.original.constraint === "issues_bookId_fkey") {
-      return res.status(409).json({
-        message: "Cannot delete a book that has been issued",
-      });
-    }
-
-    res.status(500).json({ message: "Something went wrong" });
+    await t.rollback();
+    return res.status(500).json({ message: "Something went wrong" });
   }
 };

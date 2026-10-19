@@ -13,10 +13,6 @@ interface BookForm {
 
 const MAX_COVER = 2 * 1024 * 1024;
 
-const UPLOADS_URL = (
-  import.meta.env.VITE_API_URL ?? "http://localhost:3000/api"
-).replace("/api", "/uploads");
-
 export default function EditBook() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -136,7 +132,7 @@ export default function EditBook() {
                   htmlFor="bookname"
                   className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
                 >
-                  Book Name
+                  Book Name <span className="text-red-600">*</span>
                 </label>
                 <div className="col-span-12 sm:col-span-6">
                   <input
@@ -165,7 +161,7 @@ export default function EditBook() {
                   htmlFor="author"
                   className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
                 >
-                  Author Name
+                  Author Name <span className="text-red-600">*</span>
                 </label>
                 <div className="col-span-12 sm:col-span-6">
                   <input
@@ -189,7 +185,7 @@ export default function EditBook() {
                   htmlFor="isbn"
                   className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
                 >
-                  ISBN
+                  ISBN <span className="text-red-600">*</span>
                 </label>
                 <div className="col-span-12 sm:col-span-6">
                   <input
@@ -220,14 +216,6 @@ export default function EditBook() {
                   Book Cover
                 </label>
                 <div className="col-span-12 sm:col-span-6">
-                  {currentCover && (
-                    <img
-                      src={`${UPLOADS_URL}/${currentCover}`}
-                      alt=""
-                      className="mb-2 h-24 w-16 rounded border border-slate-200 object-cover"
-                    />
-                  )}
-
                   <input
                     id="cover"
                     type="file"

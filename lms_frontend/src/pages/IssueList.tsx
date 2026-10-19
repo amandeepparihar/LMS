@@ -6,7 +6,6 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronsUpDown,
-  Home,
   Search,
 } from "lucide-react";
 import {
@@ -139,11 +138,16 @@ export default function IssueList() {
         id: "book",
         header: "Book Name",
         accessorFn: (row) => row.Book?.bookname ?? "—",
-        cell: (info) => (
-          <span className="font-medium text-slate-800">
-            {info.getValue<string>()}
-          </span>
-        ),
+        cell: (info) => {
+          const bookName = info.getValue<string>();
+          return bookName.length > 25 ? (
+            <span className="font-medium text-slate-800">
+              {bookName.slice(0, 25)}...{" "}
+            </span>
+          ) : (
+            <span className="font-medium text-slate-800"> {bookName} </span>
+          );
+        },
       },
       {
         id: "student",
@@ -222,19 +226,12 @@ export default function IssueList() {
     "w-full rounded border border-slate-200 bg-slate-100/70 px-3 py-2 text-sm text-slate-700 focus:border-slate-300 focus:bg-white focus:outline-none";
 
   return (
-    <div className="px-6 py-6">
-      <div className="mb-5">
-        <h5 className="mb-2 text-lg font-semibold text-slate-800">
-          Issue List
-        </h5>
-        <nav className="flex items-center gap-2 text-sm text-slate-500">
-          <Link to="/books" className="hover:text-slate-700">
-            <Home className="h-4 w-4" />
-          </Link>
-          <span className="text-slate-300">/</span>
-          <span className="text-slate-700">Issue List</span>
-        </nav>
-      </div>
+    <div className="px-6">
+      <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-4">
+            Issues
+          </h1>
+        </div>
 
       {apiError && (
         <p

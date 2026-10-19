@@ -106,15 +106,26 @@ export default function BookList() {
       {
         accessorKey: "bookname",
         header: "Book name",
-        cell: (info) => (
-          <span className="font-medium text-slate-800">
-            {info.getValue<string>()}
-          </span>
-        ),
+        cell: (info) => {
+          const bookName = info.getValue<string>();
+          return bookName.length > 25 ? (
+            <span className="font-medium text-slate-800">
+              {bookName.slice(0, 25)}...
+            </span>
+          ) : (
+            <span className="font-medium text-slate-800">{bookName}</span>
+          );
+        },
       },
       {
         accessorKey: "author",
         header: "Author",
+        cell: (info) => {
+          const authorName = info.getValue<string>();
+          return authorName.length > 25
+            ? `${authorName.slice(0, 25)}...`
+            : authorName;
+        },
       },
       {
         accessorKey: "isbn",

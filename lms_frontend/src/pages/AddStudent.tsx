@@ -56,7 +56,6 @@ export default function AddStudent() {
       const data = axios.isAxiosError(err) ? err.response?.data : undefined;
       const message = data?.message ?? "Couldn't save that student.";
 
-      // a duplicate phone number or roll number belongs on its own field
       if (data?.errField === "phoneno" || data?.errField === "rollno") {
         setError(data.errField, { message }, { shouldFocus: true });
         return;

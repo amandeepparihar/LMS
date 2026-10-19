@@ -92,11 +92,18 @@ export const googleLogin = async function (req, res) {
     });
 
     console.log("Token -> ", token);
+    // console.log("data ->", user)
+    // console.log("data ->", user.dataValues.name)
+    // console.log("data ->", user.dataValues.email)
 
     return res.json({
       success: true,
       message: "Login successfully",
-      data: { name: user.name, email: user.email },
+      data: {
+        name: user.dataValues.name,
+        email: user.dataValues.email,
+        token: token,
+      },
     });
   } catch (error) {
     console.error(error.message);

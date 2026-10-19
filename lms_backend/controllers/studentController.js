@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import ExcelJS from "exceljs";
-import { Student } from "../models/index.js";
+import { Student, Issue, sequelize } from "../models/index.js";
 import { UPLOAD_DIR } from "../config/path.js";
 
 function removeUpload(filename) {
@@ -22,7 +22,7 @@ function removeUpload(filename) {
 //getallStudents
 export const getStudents = async function (req, res) {
   try {
-    const students = await Student.findAll({ order: [["id", "ASC"]] });
+    const students = await Student.findAll({ order: [["id", "DESC"]] });
 
     res.json({
       success: true,
@@ -68,7 +68,7 @@ export const createStudent = async function (req, res) {
       .status(400)
       .json({ success: false, message: "All fields are required" });
   }
-
+``
   if (!photo) {
     return res
       .status(400)
@@ -82,6 +82,7 @@ export const createStudent = async function (req, res) {
       removeUpload(photo);
       return res.status(400).json({
         success: false,
+        errField: "rollno",
         message: "Student with this roll number already exists",
       });
     }
@@ -94,6 +95,7 @@ export const createStudent = async function (req, res) {
       removeUpload(photo);
       return res.status(400).json({
         success: false,
+        errField: "phoneno",
         message: "Student with this phone number already exists",
       });
     }
@@ -199,36 +201,44 @@ export const exportStudents = async function (req, res) {
 
 //delete a student
 export const deleteStudent = async function (req, res) {
+  const t = await sequelize.transaction();
+
   try {
-    const student = await Student.findByPk(req.params.id);
+    const student = await Student.findByPk(req.params.id, { transaction: t });
 
     if (!student) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
+      await t.rollback();
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const active = await Issue.findOne({
+      where: { studentId: student.id, status: "issued" },
+      transaction: t,
+    });
+
+    if (active) {
+      await t.rollback();
+      return res.status(409).json({
+        message: "Cannot delete a student who has books not returned yet",
+      });
     }
 
     const photo = student.photo;
 
-    await student.destroy();
+    //deleting history with the student
+    await Issue.destroy({ where: { studentId: student.id }, transaction: t });
+    await student.destroy({ transaction: t });
+
+    await t.commit();
     removeUpload(photo);
 
-    res.json({
+    return res.json({
       success: true,
       message: "Student deleted successfully",
       data: null,
     });
   } catch (error) {
-    // console.log("error -> ", error);
-    console.error(error.message);
-
-    if (error.original.constraint === "issues_studentId_fkey") {
-      return res.status(409).json({
-        success: false,
-        message: "Cannot delete a student who has issued books",
-      });
-    }
-
-    res.status(500).json({ success: false, message: "Something went wrong" });
+    await t.rollback();
+    return res.status(500).json({ message: "Something went wrong" });
   }
 };
