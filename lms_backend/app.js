@@ -19,7 +19,7 @@ app.use(
 );
 
 app.use(express.json({ limit: "100kb" }));
-app.use(express.urlencoded({ extended: true, limit: "1kb" }));
+app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 // book covers and student photos are served from here
 app.use("/uploads", express.static(UPLOAD_DIR));
