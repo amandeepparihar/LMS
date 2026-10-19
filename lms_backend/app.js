@@ -18,7 +18,7 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: "1kb" }));
+app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "1kb" }));
 
 // book covers and student photos are served from here
