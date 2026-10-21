@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth.route.js";
 import bookRoutes from "./routes/book.route.js";
 import issueRoutes from "./routes/issue.route.js";
 import studentRoutes from "./routes/student.route.js";
+import bookIssued from "./routes/book.issued.route.js";
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use("/uploads", express.static(UPLOAD_DIR));
 //routes
 app.use("/api/auth", authRoutes);
 app.use("/api/books", bookRoutes);
+app.use("/api/issued", bookIssued);
 app.use("/api/issues", issueRoutes);
 app.use("/api/students", studentRoutes);
 

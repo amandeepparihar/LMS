@@ -1,7 +1,11 @@
-import { Issue, Book, Student } from "../models/index.js";
+import { Issue, Book, Student, sequelize } from "../models/index.js";
 
 //get all issues
+//get all issues
 export const getIssues = async function (req, res) {
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const limit = Math.max(Number(req.query.limit) || 10, 1);
+
   const where = {};
 
   if (req.query.bookId) {
@@ -16,20 +20,44 @@ export const getIssues = async function (req, res) {
     where.status = req.query.status;
   }
 
+  const sortable = ["id", "issuedate", "returndate", "status"];
+  const sortBy = req.query.sortBy || "id";
+  const order = req.query.order === "asc" ? "ASC" : "DESC";
+
+  let orderClause;
+
+  if (sortBy === "book") {
+    orderClause = [[Book, "bookname", order]];
+  } else if (sortBy === "student") {
+    orderClause = [[Student, "name", order]];
+  } else {
+    orderClause = [[sortable.includes(sortBy) ? sortBy : "id", order]];
+  }
+
   try {
-    const issues = await Issue.findAll({
+    const { rows, count } = await Issue.findAndCountAll({
       where: where,
       include: [
         { model: Book, attributes: ["id", "bookname", "isbn"] },
         { model: Student, attributes: ["id", "name", "rollno"] },
       ],
-      order: [["id", "DESC"]],
+      order: orderClause,
+      limit: limit,
+      offset: (page - 1) * limit,
+      subQuery: false,
+      distinct: true,
     });
 
     return res.json({
       success: true,
       message: "Issues fetched successfully",
-      data: issues,
+      data: rows,
+      meta: {
+        total: count,
+        page: page,
+        limit: limit,
+        totalPages: Math.ceil(count / limit),
+      },
     });
   } catch (error) {
     console.error(error.message);
@@ -84,43 +112,67 @@ export const createIssue = async function (req, res) {
       .json({ success: false, message: "Book and student are required" });
   }
 
+  const t = await sequelize.transaction();
+
   try {
-    const book = await Book.findByPk(bookId);
+    // lock the book row so two requests can't both grab the last copy
+    const book = await Book.findByPk(bookId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
 
     if (!book) {
+      await t.rollback();
       return res
         .status(404)
         .json({ success: false, message: "Book not found" });
     }
 
-    const student = await Student.findByPk(studentId);
+    const student = await Student.findByPk(studentId, { transaction: t });
 
     if (!student) {
+      await t.rollback();
       return res
         .status(404)
         .json({ success: false, message: "Student not found" });
     }
 
-    const exists = await Issue.findOne({
-      where: { bookId: bookId, status: "issued" },
-      include: [{ model: Student, attributes: ["id", "name"] }],
+    const already = await Issue.findOne({
+      where: { bookId: bookId, studentId: studentId, status: "issued" },
+      transaction: t,
     });
 
-    console.log("exist student -> ", exists);
-
-    if (exists) {
-      const message =
-        exists.studentId === Number(studentId)
-          ? "This book is already issued to this student"
-          : `This book is already issued to ${exists.Student.name}`;
-
-      return res.status(400).json({ success: false, message: message });
+    if (already) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "This book is already issued to this student",
+      });
     }
 
-    const issue = await Issue.create({
-      bookId: bookId,
-      studentId: studentId,
-    });
+    if (book.quantity <= 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "No copies available",
+        errField: "bookId",
+      });
+    }
+
+    const issue = await Issue.create(
+      {
+        bookId: bookId,
+        studentId: studentId,
+        issuedate: new Date(),
+        status: "issued",
+      },
+      { transaction: t },
+    );
+
+    book.quantity = book.quantity - 1;
+    await book.save({ transaction: t });
+
+    await t.commit();
 
     return res.status(201).json({
       success: true,
@@ -128,15 +180,8 @@ export const createIssue = async function (req, res) {
       data: issue,
     });
   } catch (error) {
+    await t.rollback();
     console.error(error.message);
-
-    if (error.name === "SequelizeUniqueConstraintError") {
-      return res.status(400).json({
-        success: false,
-        message: "This book is already issued",
-      });
-    }
-
     return res
       .status(500)
       .json({ success: false, message: "Something went wrong" });
@@ -145,16 +190,20 @@ export const createIssue = async function (req, res) {
 
 //return issue book
 export const returnIssue = async function (req, res) {
+  const t = await sequelize.transaction();
+
   try {
-    const issue = await Issue.findByPk(req.params.id);
+    const issue = await Issue.findByPk(req.params.id, { transaction: t });
 
     if (!issue) {
+      await t.rollback();
       return res
         .status(404)
         .json({ success: false, message: "Issue not found" });
     }
 
     if (issue.status === "returned") {
+      await t.rollback();
       return res
         .status(400)
         .json({ success: false, message: "This book is already returned" });
@@ -162,7 +211,19 @@ export const returnIssue = async function (req, res) {
 
     issue.status = "returned";
     issue.returndate = new Date();
-    await issue.save();
+    await issue.save({ transaction: t });
+
+    const book = await Book.findByPk(issue.bookId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (book) {
+      book.quantity = book.quantity + 1;
+      await book.save({ transaction: t });
+    }
+
+    await t.commit();
 
     return res.json({
       success: true,
@@ -170,6 +231,7 @@ export const returnIssue = async function (req, res) {
       data: issue,
     });
   } catch (error) {
+    await t.rollback();
     console.error(error.message);
     return res
       .status(500)

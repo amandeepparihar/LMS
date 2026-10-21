@@ -4,6 +4,7 @@ const links = [
   { to: "/books", label: "Books" },
   { to: "/issues", label: "Issues" },
   { to: "/students", label: "Students" },
+  { to: "/reports", label: "Report" },
 ];
 
 export default function Sidebar() {

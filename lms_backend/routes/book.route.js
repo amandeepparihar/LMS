@@ -10,5 +10,6 @@ router.get("/:id", auth, bookController.getBookById);
 router.post("/", auth, upload.single("bookCover"), bookController.createBook);
 router.put("/:id", auth, upload.single("bookCover"), bookController.updateBook);
 router.delete("/:id", auth, bookController.deleteBook);
+// router.get("/", auth, bookController.getIssuedBooks);
 
 export default router;

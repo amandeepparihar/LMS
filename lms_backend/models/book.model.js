@@ -24,6 +24,8 @@ const Book = sequelize.define(
     quantity: {
       type: DataTypes.INTEGER,
       allowNull: false,
+      defaultValue: 1,
+      validate: { min: 0 },
     },
   },
   {

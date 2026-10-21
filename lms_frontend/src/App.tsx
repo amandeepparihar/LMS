@@ -9,6 +9,9 @@ import IssueList from "./pages/IssueList";
 import IssueBook from "./pages/IssueBook";
 import StudentList from "./pages/StudentList";
 import AddStudent from "./pages/AddStudent";
+import EditStudent from "./pages/EditStudent";
+import ReportList from "./pages/ReportList";
+
 
 export default function App() {
   return (
@@ -28,6 +31,11 @@ export default function App() {
 
           <Route path="/students" element={<StudentList />} />
           <Route path="/students/add" element={<AddStudent />} />
+
+          <Route path="/students/:id/edit" element={<EditStudent />} />
+
+          <Route path="/reports" element={<ReportList />} />
+
         </Route>
       </Route>
 

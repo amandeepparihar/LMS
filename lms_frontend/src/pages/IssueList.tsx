@@ -11,12 +11,16 @@ import {
 import {
   flexRender,
   getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import type {
+  ColumnDef,
+  PaginationState,
+  SortingState,
+} from "@tanstack/react-table";
 import api from "../api";
+import toast from "react-hot-toast";
+import axios from "axios";
 
 interface Book {
   id: number;
@@ -46,30 +50,68 @@ const formatDate = (value: string | null) =>
 
 export default function IssueList() {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [totalPages, setTotalPages] = useState(0);
+
   const [books, setBooks] = useState<Book[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
 
   // the two dropdowns above the grid
   const [studentId, setStudentId] = useState("");
   const [bookId, setBookId] = useState("");
+  // what was actually submitted with the Search button
+  const [filters, setFilters] = useState({ studentId: "", bookId: "" });
 
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "id", desc: true },
+  ]);
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
   const [loading, setLoading] = useState(true);
   const [returningId, setReturningId] = useState<number | null>(null);
   const [apiError, setApiError] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    const load = async () => {
+    const loadOptions = async () => {
       try {
-        const [issuesRes, booksRes, studentsRes] = await Promise.all([
-          api.get("/issues"),
-          api.get("/books"),
-          api.get("/students"),
+        const [booksRes, studentsRes] = await Promise.all([
+          api.get("/books", { params: { limit: 100 } }),
+          api.get("/students", { params: { limit: 100 } }),
         ]);
-        // console.log("issuesRes -> ", issuesRes)
-        setIssues(issuesRes.data.data);
+
         setBooks(booksRes.data.data);
         setStudents(studentsRes.data.data);
+      } catch {
+        setApiError("Couldn't load the filters.");
+      }
+    };
+
+    loadOptions();
+  }, []);
+
+  useEffect(() => {
+    const loadIssues = async () => {
+      setLoading(true);
+
+      try {
+        const sort = sorting[0];
+
+        const res = await api.get("/issues", {
+          params: {
+            page: pagination.pageIndex + 1,
+            limit: pagination.pageSize,
+            studentId: filters.studentId || undefined,
+            bookId: filters.bookId || undefined,
+            sortBy: sort ? sort.id : undefined,
+            order: sort ? (sort.desc ? "desc" : "asc") : undefined,
+          },
+        });
+
+        setIssues(res.data.data);
+        setTotalPages(res.data.meta.totalPages);
       } catch {
         setApiError("Couldn't load the issue list.");
       } finally {
@@ -77,49 +119,64 @@ export default function IssueList() {
       }
     };
 
-    load();
-  }, []);
+    loadIssues();
+  }, [pagination, sorting, filters, reload]);
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     setApiError("");
-    setLoading(true);
-
-    try {
-      const res = await api.get("/issues", {
-        params: { studentId, bookId },
-      });
-
-      // console.log("issues->", issues);
-      if (res.data.data) {
-        setIssues(res.data.data);
-      }
-    } catch {
-      setApiError("Couldn't run that search.");
-    } finally {
-      setLoading(false);
-    }
+    setPagination((prev) =>
+      prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 },
+    );
+    setFilters({ studentId: studentId, bookId: bookId });
   };
 
-  const handleReturn = async (issue: Issue) => {
-    setApiError("");
+  const handleReturn = (issue: Issue) => {
+    toast(
+      (t) => (
+        <div className="text-sm">
+          <p className="mb-2 text-slate-800">
+            Mark "{issue.Book?.bookname ?? "this book"}" as returned?
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => toast.dismiss(t.id)}
+              className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(t.id);
+                returnIssue(issue);
+              }}
+              className="cursor-pointer rounded-lg bg-[#4099ff] px-3 py-1 font-medium text-white hover:bg-[#2b8cff]"
+            >
+              Return
+            </button>
+          </div>
+        </div>
+      ),
+      // stays open until a button is clicked
+      { duration: Infinity },
+    );
+  };
+
+  const returnIssue = async (issue: Issue) => {
     setReturningId(issue.id);
 
     try {
       await api.put(`/issues/${issue.id}/return`);
-
-      setIssues((prev) =>
-        prev.map((row) =>
-          row.id === issue.id
-            ? {
-                ...row,
-                status: "returned",
-                returndate: new Date().toISOString(),
-              }
-            : row,
-        ),
+      toast.success("Book returned");
+      setReload((n) => n + 1);
+    } catch (err) {
+      toast.error(
+        axios.isAxiosError(err)
+          ? (err.response?.data?.message ?? "Couldn't mark that book returned.")
+          : "Couldn't mark that book returned.",
       );
-    } catch {
-      setApiError("Couldn't mark that book returned.");
     } finally {
       setReturningId(null);
     }
@@ -212,12 +269,14 @@ export default function IssueList() {
   const table = useReactTable({
     data: issues,
     columns,
-    state: { sorting },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    manualSorting: true,
+    manualPagination: true,
+    manualFiltering: true,
+    pageCount: totalPages,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 10 } },
   });
 
   const rows = table.getRowModel().rows;
@@ -228,10 +287,10 @@ export default function IssueList() {
   return (
     <div className="px-6">
       <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-4">
-            Issues
-          </h1>
-        </div>
+        <h1 className="mb-4 text-2xl font-bold tracking-tight text-slate-900">
+          Issues
+        </h1>
+      </div>
 
       {apiError && (
         <p
@@ -374,7 +433,7 @@ export default function IssueList() {
                   colSpan={columns.length}
                   className="px-4 py-12 text-center text-slate-500"
                 >
-                  {studentId || bookId ? (
+                  {filters.studentId || filters.bookId ? (
                     "No issue matches that filter."
                   ) : (
                     <>
@@ -391,33 +450,36 @@ export default function IssueList() {
               </tr>
             )}
 
-            {rows.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 text-slate-600">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {!loading &&
+              rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-4 py-3 text-slate-600">
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
           </tbody>
         </table>
 
-        {table.getPageCount() > 1 && (
+        {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm">
             <p className="text-slate-500">
-              Page {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount()}
+              Page {pagination.pageIndex + 1} of {totalPages}
             </p>
 
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
+                disabled={!table.getCanPreviousPage() || loading}
                 className="flex cursor-pointer items-center gap-1 rounded border border-slate-200 px-3 py-1.5 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -426,7 +488,7 @@ export default function IssueList() {
               <button
                 type="button"
                 onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
+                disabled={!table.getCanNextPage() || loading}
                 className="flex cursor-pointer items-center gap-1 rounded border border-slate-200 px-3 py-1.5 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next

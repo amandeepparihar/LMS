@@ -1,8 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Book, Issue, sequelize } from "../models/index.js";
+import { Book, Issue, sequelize, Student } from "../models/index.js";
 import { UPLOAD_DIR } from "../config/path.js";
 import mailSender from "../utils/mailSender.util.js";
+import { Op } from "sequelize";
+import { QueryTypes } from "sequelize";
+// import db f
 
 async function sendBookMail(to, book) {
   const body = `
@@ -34,18 +37,47 @@ function removeUpload(filename) {
 //getbooks
 export const getBooks = async function (req, res) {
   try {
-    const books = await Book.findAll({ order: [["id", "DESC"]] });
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.max(Number(req.query.limit) || 10, 1);
+    const search = (req.query.search || "").trim();
+
+    const sortable = ["id", "bookname", "author", "isbn", "quantity"];
+    const sortBy = sortable.includes(req.query.sortBy)
+      ? req.query.sortBy
+      : "id";
+    const order = req.query.order === "asc" ? "ASC" : "DESC";
+
+    const where = search
+      ? {
+          [Op.or]: [
+            { bookname: { [Op.iLike]: `%${search}%` } },
+            { author: { [Op.iLike]: `%${search}%` } },
+            { isbn: { [Op.iLike]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    const { rows, count } = await Book.findAndCountAll({
+      where: where,
+      order: [[sortBy, order]],
+      limit: limit,
+      offset: (page - 1) * limit,
+    });
 
     return res.status(200).json({
       success: true,
       message: "Books fetched successfully",
-      data: books,
+      data: rows,
+      meta: {
+        total: count,
+        page: page,
+        limit: limit,
+        totalPages: Math.ceil(count / limit),
+      },
     });
   } catch (error) {
     console.error(error.message);
-    return res.status(500).json({
-      message: "Something went wrong",
-    });
+    return res.status(500).json({ message: "Something went wrong" });
   }
 };
 
@@ -72,9 +104,9 @@ export const getBookById = async function (req, res) {
 //create book
 export const createBook = async function (req, res) {
   const bookCover = req.file ? req.file.filename : null;
-  const { bookname, author, isbn } = req.body;
+  const { bookname, author, isbn, quantity } = req.body;
 
-  if (!bookname || !author || !isbn) {
+  if (!bookname || !author || !isbn || !quantity) {
     removeUpload(bookCover);
     return res.status(400).json({
       message: "All fields are required",
@@ -96,7 +128,7 @@ export const createBook = async function (req, res) {
       bookname: bookname,
       author: author,
       isbn: isbn,
-      quantity: 1,
+      quantity: quantity,
     });
 
     sendBookMail(req.user.email, book).catch(function (mailError) {
@@ -117,11 +149,9 @@ export const createBook = async function (req, res) {
 //update book
 export const updateBook = async function (req, res) {
   const bookCover = req.file ? req.file.filename : null;
-  const bookname = req.body.bookname;
-  const author = req.body.author;
-  const isbn = req.body.isbn;
+  const { bookname, author, isbn, quantity } = req.body;
 
-  if (!bookname || !author || !isbn) {
+  if (!bookname || !author || !isbn || !quantity) {
     removeUpload(bookCover);
     return res.status(400).json({
       message: "All fields are required",
@@ -143,6 +173,24 @@ export const updateBook = async function (req, res) {
       return res
         .status(400)
         .json({ message: "Book with this ISBN already exists" });
+    }
+
+    if (quantity !== undefined) {
+      const issuedCount = await Issue.count({
+        where: { bookId: book.id, status: "issued" },
+      });
+
+      // console.log("issuesCount -> ", issuedCount);
+
+      if (Number(quantity) < issuedCount) {
+        removeUpload(bookCover);
+        return res.status(400).json({
+          message: `${issuedCount} copies are currently issued`,
+          errField: "quantity",
+        });
+      }
+
+      book.quantity = Number(quantity);
     }
 
     const oldCover = book.bookCover;
@@ -213,5 +261,82 @@ export const deleteBook = async function (req, res) {
   } catch (error) {
     await t.rollback();
     return res.status(500).json({ message: "Something went wrong" });
+  }
+};
+
+//book issued to
+export const getIssuedBooks = async function (req, res) {
+  try {
+    let where = {};
+    where.status = "issued";
+
+    // const book = await Issue.findAll({
+    //   where: where,
+    // });
+
+    const data = await Issue.findAll({
+      where: where,
+      attributes: [
+        "Issue.bookId",
+        [sequelize.fn("COUNT", sequelize.col("Issue.bookId")), "IssueCount"],
+      ],
+      include: [
+        {
+          model: Book,
+          attributes: ["bookname", "quantity"],
+          required: true,
+        },
+      ],
+      group: ["Book.bookname", "Book.id", "Issue.bookId"],
+    });
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "No data found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "book fetched successfully",
+      data: data,
+    });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ message: "Something went wrong" });
+  }
+};
+
+//this book issued students
+export const getStuNameofIssuedBooks = async function (req, res) {
+  try {
+    // const bookId = await Book.findByPk(req.params.id);
+    const bookId = req.params.id;
+
+    // if (!bookId) {
+    //   return res.status(404).json({
+    //     success: false,
+    //     message: "not found",
+    //   });
+    // }
+    const where = {};
+    where.status = "issued";
+    where.bookId = bookId;
+    const data = await Issue.findAll({
+      where,
+      attributes: ["studentId"],
+      include: [{ model: Student, attributes: ["name"], required: true }],
+    });
+
+    console.log("data-> ", data);
+    return res.status(200).json({
+      success: true,
+      message: "book fetched succesfully",
+      data: data,
+    });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ message: "Something went wrong" });
   }
 };

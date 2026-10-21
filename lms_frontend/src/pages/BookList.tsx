@@ -14,21 +14,24 @@ import {
 import {
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import type {
+  ColumnDef,
+  PaginationState,
+  SortingState,
+} from "@tanstack/react-table";
 import axios from "axios";
 import api from "../api";
 import noBookCover from "../assets/nobookCover.png";
+import toast from "react-hot-toast";
 
 interface Book {
   id: number;
   bookname: string;
   author: string;
   isbn: string;
+  quantity: string;
   bookCover: string | null;
 }
 
@@ -38,17 +41,55 @@ const UPLOADS_URL = (
 
 export default function BookList() {
   const [books, setBooks] = useState<Book[]>([]);
+  const [totalPages, setTotalPages] = useState(0);
+
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [sorting, setSorting] = useState<SortingState>([]);
+
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "id", desc: true },
+  ]);
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 5,
+  });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPagination((prev) =>
+        prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 },
+      );
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   useEffect(() => {
     const loadBooks = async () => {
+      setLoading(true);
+
       try {
-        const res = await api.get("/books");
+        const sort = sorting[0];
+
+        const res = await api.get("/books", {
+          params: {
+            page: pagination.pageIndex + 1,
+            limit: pagination.pageSize,
+            search: search || undefined,
+            sortBy: sort ? sort.id : undefined,
+            order: sort ? (sort.desc ? "desc" : "asc") : undefined,
+          },
+        });
+
         setBooks(res.data.data);
+        setTotalPages(res.data.meta.totalPages);
       } catch (err) {
+        // console.log("message ->", err.response?.data);
         setError(
           axios.isAxiosError(err)
             ? (err.response?.data?.message ?? "Can't reach the server.")
@@ -60,20 +101,46 @@ export default function BookList() {
     };
 
     loadBooks();
-  }, []);
+  }, [pagination, sorting, search, reload]);
 
-  const handleDelete = async (book: Book) => {
-    if (!window.confirm(`Delete "${book.bookname}"?`)) {
-      return;
-    }
+  const handleDelete = (book: Book) => {
+    toast(
+      (t) => (
+        <div className="text-sm">
+          <p className="mb-2 text-slate-800">Delete "{book.bookname}"?</p>
 
-    setError("");
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => toast.dismiss(t.id)}
+              className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(t.id);
+                removeBook(book);
+              }}
+              className="cursor-pointer rounded-lg bg-red-600 px-3 py-1 font-medium text-white hover:bg-red-700"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: Infinity },
+    );
+  };
 
+  const removeBook = async (book: Book) => {
     try {
       await api.delete(`/books/${book.id}`);
-      setBooks((prev) => prev.filter((b) => b.id !== book.id));
+      toast.success("Book deleted");
+      setReload((n) => n + 1);
     } catch (err) {
-      setError(
+      toast.error(
         axios.isAxiosError(err)
           ? (err.response?.data?.message ?? "Couldn't delete that book.")
           : "Couldn't delete that book.",
@@ -87,7 +154,6 @@ export default function BookList() {
         id: "cover",
         header: "Cover",
         enableSorting: false,
-        enableGlobalFilter: false,
         cell: ({ row }) =>
           row.original.bookCover ? (
             <img
@@ -135,10 +201,16 @@ export default function BookList() {
         ),
       },
       {
+        accessorKey: "quantity",
+        header: "Quantity",
+        cell: (info) => (
+          <span className="tabular-nums">{info.getValue<string>()}</span>
+        ),
+      },
+      {
         id: "actions",
         header: () => <span className="block text-right">Action</span>,
         enableSorting: false,
-        enableGlobalFilter: false,
         cell: ({ row }) => (
           <div className="flex items-center justify-end gap-1">
             <Link
@@ -166,14 +238,14 @@ export default function BookList() {
   const table = useReactTable({
     data: books,
     columns,
-    state: { sorting, globalFilter: search },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setSearch,
+    onPaginationChange: setPagination,
+    manualSorting: true,
+    manualPagination: true,
+    manualFiltering: true,
+    pageCount: totalPages,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 5 } },
   });
 
   const rows = table.getRowModel().rows;
@@ -209,8 +281,8 @@ export default function BookList() {
         <Search className="pointer-events-none absolute top-1/2 left-3.5 h-[18px] w-[18px] -translate-y-1/2 text-slate-400" />
         <input
           type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Search name, author or ISBN"
           className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-2.5 pr-3 pl-11 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#f5b700] focus:bg-white focus:ring-4 focus:ring-amber-100 focus:outline-none"
         />
@@ -279,7 +351,9 @@ export default function BookList() {
                   colSpan={columns.length}
                   className="px-4 py-12 text-center text-slate-500"
                 >
-                  {books.length === 0 ? (
+                  {search ? (
+                    `No book matches "${search}".`
+                  ) : (
                     <>
                       No books yet.{" "}
                       <Link
@@ -289,40 +363,41 @@ export default function BookList() {
                         Add the first one.
                       </Link>
                     </>
-                  ) : (
-                    `No book matches "${search}".`
                   )}
                 </td>
               </tr>
             )}
 
-            {rows.map((row) => (
-              <tr
-                key={row.id}
-                className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 text-slate-600">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {!loading &&
+              rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-4 py-3 text-slate-600">
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
           </tbody>
         </table>
 
-        {table.getPageCount() > 1 && (
+        {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm">
             <p className="text-slate-500">
-              Page {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount()}
+              Page {pagination.pageIndex + 1} of {totalPages}
             </p>
 
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
+                disabled={!table.getCanPreviousPage() || loading}
                 className="flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -331,7 +406,7 @@ export default function BookList() {
               <button
                 type="button"
                 onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
+                disabled={!table.getCanNextPage() || loading}
                 className="flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next

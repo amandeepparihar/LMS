@@ -4,12 +4,14 @@ import { useForm } from "react-hook-form";
 import { Home } from "lucide-react";
 import axios from "axios";
 import api from "../api";
+import toast from "react-hot-toast";
 
 interface BookForm {
   bookname: string;
   author: string;
   isbn: string;
   bookCover: FileList;
+  quantity: string;
 }
 
 const MAX_COVER = 2 * 1024 * 1024;
@@ -24,8 +26,8 @@ export default function AddBook() {
     setError,
     formState: { errors, isSubmitting },
   } = useForm<BookForm>({
-    mode: "onTouched",
-    defaultValues: { bookname: "", author: "", isbn: "" },
+    // mode: "onTouched",
+    defaultValues: { bookname: "", author: "", isbn: "", quantity: "" },
   });
 
   const onSubmit = async (values: BookForm) => {
@@ -35,6 +37,7 @@ export default function AddBook() {
     form.append("bookname", values.bookname.trim());
     form.append("author", values.author.trim());
     form.append("isbn", values.isbn.trim());
+    form.append("quantity", values.quantity.trim());
 
     if (values.bookCover?.[0]) {
       form.append("bookCover", values.bookCover[0]);
@@ -42,18 +45,19 @@ export default function AddBook() {
 
     try {
       await api.post("/books", form);
+      toast.success("Book added");
       navigate("/books");
     } catch (err) {
       const message = axios.isAxiosError(err)
         ? (err.response?.data?.message ?? "Can't reach the server.")
         : "Couldn't save that book.";
 
-      // console.log("message -> ", message);
+      // console.log("message -> ", err.response);
       if (message.toLowerCase().includes("isbn")) {
         setError("isbn", { message }, { shouldFocus: true });
         return;
       }
-
+      toast.error(message);
       setApiError(message);
     }
   };
@@ -173,6 +177,35 @@ export default function AddBook() {
                 {errors.isbn && (
                   <p className="mt-1.5 text-xs text-red-600">
                     {errors.isbn.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* for quantity */}
+            <div className="mb-4 grid grid-cols-12 items-start gap-4">
+              <label
+                htmlFor="quantity"
+                className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
+              >
+                Quantity <span className="text-rose-600">*</span>
+              </label>
+              <div className="col-span-12 sm:col-span-6">
+                <input
+                  id="quantity"
+                  placeholder="quantity"
+                  className={`${fieldClass(!!errors.quantity)} tabular-nums`}
+                  {...register("quantity", {
+                    required: "quantity is required",
+                    pattern: {
+                      value: /^[0-9]+$/,
+                      message: "Only number allowed",
+                    },
+                  })}
+                />
+                {errors.quantity && (
+                  <p className="mt-1.5 text-xs text-red-600">
+                    {errors.quantity.message}
                   </p>
                 )}
               </div>

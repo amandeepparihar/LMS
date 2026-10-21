@@ -3,6 +3,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { Student, Issue, sequelize } from "../models/index.js";
 import { UPLOAD_DIR } from "../config/path.js";
+import { Op } from "sequelize";
 
 function removeUpload(filename) {
   if (!filename) {
@@ -22,12 +23,43 @@ function removeUpload(filename) {
 //getallStudents
 export const getStudents = async function (req, res) {
   try {
-    const students = await Student.findAll({ order: [["id", "DESC"]] });
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.max(Number(req.query.limit) || 10, 1);
+    const search = (req.query.search || "").trim();
 
-    res.json({
+    const sortable = ["id", "name", "rollno", "phoneno", "city"];
+    const sortBy = sortable.includes(req.query.sortBy)
+      ? req.query.sortBy
+      : "id";
+    const order = req.query.order === "asc" ? "ASC" : "DESC";
+
+    const where = search
+      ? {
+          [Op.or]: [
+            { name: { [Op.iLike]: `%${search}%` } },
+            { rollno: { [Op.iLike]: `%${search}%` } },
+            { phoneno: { [Op.iLike]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    const { rows, count } = await Student.findAndCountAll({
+      where: where,
+      order: [[sortBy, order]],
+      limit: limit,
+      offset: (page - 1) * limit,
+    });
+
+    return res.status(200).json({
       success: true,
       message: "Students fetched successfully",
-      data: students,
+      data: rows,
+      meta: {
+        total: count,
+        page: page,
+        limit: limit,
+        totalPages: Math.ceil(count / limit),
+      },
     });
   } catch (error) {
     console.error(error.message);
@@ -46,14 +78,16 @@ export const getStudentById = async function (req, res) {
         .json({ success: false, message: "Student not found" });
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: "Student fetched successfully",
       data: student,
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).json({ success: false, message: "Something went wrong" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong" });
   }
 };
 
@@ -68,7 +102,7 @@ export const createStudent = async function (req, res) {
       .status(400)
       .json({ success: false, message: "All fields are required" });
   }
-``
+  ``;
   if (!photo) {
     return res
       .status(400)
@@ -119,6 +153,83 @@ export const createStudent = async function (req, res) {
     console.error(error.message);
     removeUpload(photo);
     res.status(500).json({ success: false, message: "Something went wrong" });
+  }
+};
+
+//edit a student
+export const updateStudent = async function (req, res) {
+  const photo = req.file ? req.file.filename : null;
+  const { name, rollno, phoneno, country, state, city } = req.body;
+
+  if (!name || !rollno || !phoneno || !country || !state || !city) {
+    removeUpload(photo);
+    return res.status(400).json({
+      success: false,
+      message: "All fields are required",
+    });
+  }
+
+  try {
+    const student = await Student.findByPk(req.params.id);
+
+    if (!student) {
+      removeUpload(photo);
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
+    }
+
+    const rollnoTaken = await Student.findOne({ where: { rollno: rollno } });
+
+    if (rollnoTaken && rollnoTaken.id !== student.id) {
+      removeUpload(photo);
+      return res.status(400).json({
+        success: false,
+        message: "A student with this roll no already exists",
+        errField: "rollno",
+      });
+    }
+
+    const phoneTaken = await Student.findOne({ where: { phoneno: phoneno } });
+
+    if (phoneTaken && phoneTaken.id !== student.id) {
+      removeUpload(photo);
+      return res.status(400).json({
+        success: false,
+        message: "A student with this phone no already exists",
+        errField: "phoneno",
+      });
+    }
+
+    const oldPhoto = student.photo;
+
+    student.name = name;
+    student.rollno = rollno;
+    student.phoneno = phoneno;
+    student.country = country;
+    student.state = state;
+    student.city = city;
+
+    if (photo) {
+      student.photo = photo;
+    }
+
+    await student.save();
+
+    if (photo && oldPhoto) {
+      removeUpload(oldPhoto);
+    }
+
+    return res.json({
+      success: true,
+      message: "Student updated successfully",
+      data: student,
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong" });
   }
 };
 

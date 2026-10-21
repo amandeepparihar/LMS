@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import loginImage from "../assets/img-auth-2.jpg";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import api from "../api";
 
@@ -14,6 +14,9 @@ export default function Login() {
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [searchParams] = useSearchParams();
+
+  const loggedOut = searchParams.get("message") === "logged_out";
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -85,6 +88,13 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="mt-8">
+            <div>
+              {loggedOut && (
+                <p className="mb-4 rounded bg-yellow-100 p-3 text-yellow-800">
+                  You have been logged out. Please log in again.
+                </p>
+              )}
+            </div>
             <label
               htmlFor="email"
               className="mb-1.5 block text-sm font-medium text-slate-700"

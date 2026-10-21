@@ -11,5 +11,6 @@ router.get("/:id", auth, studentController.getStudentById);
 router.get("/:id/photo", auth, studentController.downloadStudentPhoto);
 router.post("/", auth, upload.single("photo"), studentController.createStudent);
 router.delete("/:id", auth, studentController.deleteStudent);
+router.put("/:id", auth, upload.single("photo"), studentController.updateStudent);
 
 export default router;

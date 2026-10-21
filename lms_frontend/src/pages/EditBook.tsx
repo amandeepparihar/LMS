@@ -3,11 +3,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { Home } from "lucide-react";
 import api from "../api";
+import axios from "axios";
+import toast from "react-hot-toast";
 
 interface BookForm {
   bookname: string;
   author: string;
   isbn: string;
+  quantity: string;
   bookCover: FileList;
 }
 
@@ -25,29 +28,25 @@ export default function EditBook() {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<BookForm>({
-    defaultValues: { bookname: "", author: "", isbn: "" },
+    defaultValues: { bookname: "", author: "", isbn: "", quantity: "" },
   });
 
   useEffect(() => {
     const loadBook = async () => {
       try {
-        // TODO: const res = await api.get(`/books/${id}`);
-        //       const book = res.data.data;
         const res = await api.get(`/books/${id}`);
         const book = res.data.data;
 
-        // const book = await Promise.resolve<Book | null>(null);
-
         if (book) {
           reset();
-          // reset() fills the form after the data arrives, which
-          // defaultValues can't do because they're read once on mount
           reset({
             bookname: book.bookname,
             author: book.author,
             isbn: book.isbn,
+            quantity: book.quantity,
           });
           setCurrentCover(book.bookCover);
         }
@@ -68,6 +67,7 @@ export default function EditBook() {
     form.append("bookname", values.bookname.trim());
     form.append("author", values.author.trim());
     form.append("isbn", values.isbn.trim());
+    form.append("quantity", values.quantity);
 
     if (values.bookCover?.[0]) {
       form.append("bookCover", values.bookCover[0]);
@@ -75,11 +75,21 @@ export default function EditBook() {
 
     try {
       await api.put(`/books/${id}`, form);
-      await Promise.resolve();
-
+      toast.success("Book updated");
       navigate("/books");
-    } catch {
-      setApiError("Couldn't save those changes.");
+    } catch (err) {
+      // console.log("error -> ", err);
+      const message = axios.isAxiosError(err)
+        ? (err.response?.data?.message ?? "Can't reach the server.")
+        : "Couldn't save that book.";
+
+      // console.log("message -> ", err.response);
+      if (err.response?.data.errField === "quantity") {
+        setError("quantity", { message }, { shouldFocus: true });
+      }
+      toast.error(message);
+      // setApiError(message);
+      // setApiError("Couldn't save those changes.");
     }
   };
 
@@ -175,6 +185,35 @@ export default function EditBook() {
                   {errors.author && (
                     <p className="mt-1.5 text-xs text-red-600">
                       {errors.author.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* for quantity */}
+              <div className="mb-4 grid grid-cols-12 items-start gap-4">
+                <label
+                  htmlFor="quantity"
+                  className="col-span-12 pt-2 text-sm text-slate-600 sm:col-span-3"
+                >
+                  Quantity <span className="text-rose-600">*</span>
+                </label>
+                <div className="col-span-12 sm:col-span-6">
+                  <input
+                    id="quantity"
+                    placeholder="quantity"
+                    className={`${fieldClass(!!errors.quantity)} tabular-nums`}
+                    {...register("quantity", {
+                      required: "quantity is required",
+                      pattern: {
+                        value: /^[0-9]+$/,
+                        message: "Only number allowed",
+                      },
+                    })}
+                  />
+                  {errors.quantity && (
+                    <p className="mt-1.5 text-xs text-red-600">
+                      {errors.quantity.message}
                     </p>
                   )}
                 </div>

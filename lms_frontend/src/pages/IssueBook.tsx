@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { Home } from "lucide-react";
 import axios from "axios";
 import api from "../api";
+import toast from "react-hot-toast";
 
 interface Book {
   id: number;
@@ -76,6 +77,7 @@ export default function IssueBook() {
         studentId: Number(values.studentId),
         issuedate: values.issuedate,
       });
+      toast.success("Book Issued")
 
       navigate("/issues");
     } catch (err) {
@@ -86,7 +88,7 @@ export default function IssueBook() {
         setError("bookId", { message }, { shouldFocus: true });
         return;
       }
-
+      toast.error(message)
       setApiError(message);
     }
   };
