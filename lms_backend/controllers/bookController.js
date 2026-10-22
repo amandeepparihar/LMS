@@ -1,11 +1,10 @@
-import fs from "node:fs";
+import fs, { link } from "node:fs";
 import path from "node:path";
 import { Book, Issue, sequelize, Student } from "../models/index.js";
 import { UPLOAD_DIR } from "../config/path.js";
 import mailSender from "../utils/mailSender.util.js";
 import { Op } from "sequelize";
 import { QueryTypes } from "sequelize";
-// import db f
 
 async function sendBookMail(to, book) {
   const body = `
@@ -267,76 +266,183 @@ export const deleteBook = async function (req, res) {
 //book issued to
 export const getIssuedBooks = async function (req, res) {
   try {
-    let where = {};
-    where.status = "issued";
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+    const search = (req.query.search || "").trim();
 
-    // const book = await Issue.findAll({
-    //   where: where,
-    // });
+    const sortable = {
+      id: "b.id",
+      bookname: "b.bookname",
+      quantity: "b.quantity",
+      issueCount: '"issueCount"',
+    };
+    const sortBy = sortable[req.query.sortBy] || "b.id";
+    const order = req.query.order === "asc" ? "ASC" : "DESC";
 
-    const data = await Issue.findAll({
-      where: where,
-      attributes: [
-        "Issue.bookId",
-        [sequelize.fn("COUNT", sequelize.col("Issue.bookId")), "IssueCount"],
-      ],
-      include: [
-        {
-          model: Book,
-          attributes: ["bookname", "quantity"],
-          required: true,
+    const rows = await sequelize.query(
+      `SELECT b.id,
+              b.bookname,
+              b.quantity,
+              COUNT(i."bookId")::int AS "issueCount"
+         FROM books b
+         JOIN issues i ON b.id = i."bookId"
+        WHERE i.status = 'issued'
+          AND (:search = '' OR b.bookname ILIKE :like)
+        GROUP BY b.id, b.bookname, b.quantity
+        ORDER BY ${sortBy} ${order}
+        LIMIT :limit OFFSET :offset`,
+      {
+        replacements: {
+          search: search,
+          like: `%${search}%`,
+          limit: limit,
+          offset: (page - 1) * limit,
         },
-      ],
-      group: ["Book.bookname", "Book.id", "Issue.bookId"],
-    });
+        type: QueryTypes.SELECT,
+      },
+    );
 
-    if (!data) {
-      return res.status(404).json({
-        success: false,
-        message: "No data found",
-      });
+    console.log("rows => ", rows);
+    const ids = rows.map((book) => book.id);
+    console.log("ids -> ", ids);
+    const [{ total }] = await sequelize.query(
+      `SELECT COUNT(DISTINCT i."bookId")::int AS total
+         FROM issues i
+         JOIN books b ON b.id = i."bookId"
+        WHERE i.status = 'issued'
+          AND (:search = '' OR b.bookname ILIKE :like)`,
+      {
+        replacements: { search: search, like: `%${search}%` },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    //students with book id;
+    const data = await sequelize.query(
+      `select "bookId",
+             COUNT(distinct "studentId") as total_students
+        from issues
+        where status = 'issued'
+	      and "issuedate" < NOW() - interval '3 days'
+        and "bookId" in (:ids)
+        group by "bookId"`,
+      {
+        replacements: { ids: ids },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    console.log("data -> ", data);
+
+    const finalData = new Map();
+    for (let i of rows) {
+      console.log("i -> ", i);
+      for (let j of data) {
+        console.log(j);
+        if (i.id == j.bookId) {
+          finalData[i.id] = {
+            id: i.id,
+            bookname: i.bookname,
+            quantity: i.quantity,
+            issueCount: i.issueCount,
+            total_students: j.total_students,
+          };
+        }
+      }
     }
 
+    console.log("final Data-> ", finalData);
+    const resData = Object.values(finalData)
+    console.log("res -> ", resData)
     return res.status(200).json({
       success: true,
-      message: "book fetched successfully",
-      data: data,
+      message: "Report fetched successfully",
+      data: resData,
+      meta: {
+        total: total,
+        page: page,
+        limit: limit,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).json({ message: "Something went wrong" });
+    return res.status(500).json({ message: "Something went wrong" });
   }
 };
 
 //this book issued students
 export const getStuNameofIssuedBooks = async function (req, res) {
+  const bookId = Number(req.params.id);
+
+  if (!Number.isInteger(bookId)) {
+    return res.status(400).json({ success: false, message: "Invalid book id" });
+  }
+
   try {
-    // const bookId = await Book.findByPk(req.params.id);
-    const bookId = req.params.id;
+    const data = await sequelize.query(
+      `SELECT i.id,
+              i.issuedate,
+              s.id     AS "studentId",
+              s.name,
+              s.rollno
+         FROM issues i
+         JOIN students s ON s.id = i."studentId"
+        WHERE i."bookId" = :bookId
+          AND i.status = 'issued'
+        ORDER BY i.issuedate DESC`,
+      {
+        replacements: { bookId: bookId },
+        type: QueryTypes.SELECT,
+      },
+    );
 
-    // if (!bookId) {
-    //   return res.status(404).json({
-    //     success: false,
-    //     message: "not found",
-    //   });
-    // }
-    const where = {};
-    where.status = "issued";
-    where.bookId = bookId;
-    const data = await Issue.findAll({
-      where,
-      attributes: ["studentId"],
-      include: [{ model: Student, attributes: ["name"], required: true }],
-    });
-
-    console.log("data-> ", data);
     return res.status(200).json({
       success: true,
-      message: "book fetched succesfully",
+      message: "Students fetched successfully",
       data: data,
     });
   } catch (error) {
     console.error(error.message);
-    res.status(500).json({ message: "Something went wrong" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong" });
+  }
+};
+
+//fine students
+export const getFineStuCountByBookId = async function (req, res) {
+  const bookId = Number(req.params.id);
+
+  if (!Number.isInteger(bookId)) {
+    return res.status(400).json({ success: false, message: "Invalid book id" });
+  }
+  try {
+    const data = await sequelize.query(
+      `select "bookId",
+            s."name",
+            s.rollno,
+             COUNT(distinct "studentId") as total_students
+        from issues i join students s on i."studentId" = s.id 
+        where i.status = 'issued'
+	      and i."issuedate" < NOW() - interval '3 days'
+        and i."bookId" = :bookId
+        group by i."bookId", s."name", s.rollno`,
+      {
+        replacements: { bookId: bookId },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "fetched successfully",
+      data: data,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
   }
 };

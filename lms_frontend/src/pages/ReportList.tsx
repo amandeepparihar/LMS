@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -9,7 +8,6 @@ import {
   Search,
 } from "lucide-react";
 import {
-  createColumnHelper,
   flexRender,
   getCoreRowModel,
   useReactTable,
@@ -21,32 +19,34 @@ import type {
 } from "@tanstack/react-table";
 import axios from "axios";
 import api from "../api";
-// import noBookCover from "../assets/nobookCover.png";
-// import toast from "react-hot-toast";
 
-interface Data {
-  IssueCount: string;
-  Book: {
-    id: string;
-    bookname: string;
-    quantity: string;
-    IssueCount: string;
-  };
+interface Report {
+  id: number;
+  bookname: string;
+  quantity: string;
+  issueCount: string;
+  total_students: string;
 }
 
-// const UPLOADS_URL = (
-//   import.meta.env.VITE_API_URL ?? "http://localhost:3000/api"
-// ).replace("/api", "/uploads");
+interface IssuedTo {
+  id: number;
+  issuedate: string;
+  studentId: number;
+  name: string;
+  rollno: string;
+}
+
+const formatDate = (value: string) => new Date(value).toLocaleDateString();
 
 export default function ReportList() {
-  const [books, setBooks] = useState<Data[]>([]);
+  const [books, setBooks] = useState<Report[]>([]);
   const [totalPages, setTotalPages] = useState(0);
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
 
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "id", desc: true },
+    { id: "issueCount", desc: true },
   ]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -55,7 +55,13 @@ export default function ReportList() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [reload, setReload] = useState(0);
+
+  const [openBookId, setOpenBookId] = useState<number | null>(null);
+  const [openFineBookId, setOpenFineBookId] = useState<number | null>(null);
+  const [students, setStudents] = useState<IssuedTo[]>([]);
+  const [finedStudents, setFinedStudents] = useState<IssuedTo[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [fineStudentsLoading, setFineStudentsLoading] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -69,86 +75,153 @@ export default function ReportList() {
   }, [searchInput]);
 
   useEffect(() => {
-    const loadBooks = async () => {
+    const loadReport = async () => {
       setLoading(true);
 
       try {
-        // const sort = sorting[0];
+        const sort = sorting[0];
 
-        const res = await api.get("/issued");
+        const res = await api.get("/issued", {
+          params: {
+            page: pagination.pageIndex + 1,
+            limit: pagination.pageSize,
+            search: search || undefined,
+            sortBy: sort ? sort.id : undefined,
+            order: sort ? (sort.desc ? "desc" : "asc") : undefined,
+          },
+        });
 
-        // console.log("res ->", res.data.data);
+        console.log("data -> ", res.data.data);
 
         setBooks(res.data.data);
         setTotalPages(res.data.meta.totalPages);
+        setOpenBookId(null);
       } catch (err) {
-        // console.log("message ->", err.response?.data);
-        // setError(
-        //   axios.isAxiosError(err)
-        //     ? (err.response?.data?.message ?? "Can't reach the server.")
-        //     : "Couldn't load the books.",
-        // );
+        setError(
+          axios.isAxiosError(err)
+            ? (err.response?.data?.message ?? "Can't reach the server.")
+            : "Couldn't load the report.",
+        );
       } finally {
         setLoading(false);
       }
     };
 
-    loadBooks();
-  }, [pagination, sorting, search, reload]);
+    loadReport();
+  }, [pagination, sorting, search]);
 
-  const columnHelper = createColumnHelper<Data[]>();
+  const showStudents = async (book: Report) => {
+    if (openBookId === book.id) {
+      setOpenBookId(null);
+      return;
+    }
 
-  const columns: ColumnDef<Data[]> = [
-    columnHelper.accessor("Book.bookname", {
-      header: "Book Name",
-      cell: (info) => info.getValue(),
-    }),
-    columnHelper.accessor("IssueCount", {
-      header: "Total Issue Count",
-      cell: (info) => info.getValue(),
-    }),
-    // columnHelper.accessor("IssueCount", {
-    //   header: "Total Issue Count",
-    //   cell: (info) => info.getValue(),
-    // }),
-    columnHelper.accessor("Book.quantity", {
-      header: "Available Quantity",
-      cell: (info) => {
-        const name = info.getValue() as string;
-        console.log("name -> ", info)
-        async function stuHandle(id: string) {
-          const res = await api.get(`/issued/${id}`);
-          console.log("res -> ", res);
-        }
+    setError("");
+    setOpenBookId(book.id);
+    setStudents([]);
+    setStudentsLoading(true);
 
-        return (
-          <button
-            onClick={() => stuHandle(info.cell.id)}
-            className="bg-blue-600 px-4 text-white cursor-pointer"
-          >
-            {name}
-            {/* show Students */}
-          </button>
-        );
+    try {
+      const res = await api.get(`/issued/${book.id}`);
+      setStudents(res.data.data);
+    } catch (err) {
+      setError(
+        axios.isAxiosError(err)
+          ? (err.response?.data?.message ?? "Couldn't load the students.")
+          : "Couldn't load the students.",
+      );
+      setOpenBookId(null);
+    } finally {
+      setStudentsLoading(false);
+    }
+  };
+
+  const showFinedStu = async (id: number) => {
+    // console.log("id -> ", id);
+    if (openFineBookId === id) {
+      setOpenFineBookId(null);
+      return;
+    }
+
+    setError("");
+    setOpenFineBookId(id);
+    setFinedStudents([]);
+    setFineStudentsLoading(true);
+
+    try {
+      const res = await api.get(`/fine/${id}`);
+      // console.log("res -> ", res.data.data);
+      setFinedStudents(res.data.data);
+    } catch (err) {
+      setError(
+        axios.isAxiosError(err)
+          ? (err.response?.data?.message ?? "Couldn't load the students.")
+          : "Couldn't load the students.",
+      );
+      setOpenFineBookId(null);
+    } finally {
+      setFineStudentsLoading(false);
+    }
+  };
+
+  const columns = useMemo<ColumnDef<Report>[]>(
+    () => [
+      {
+        accessorKey: "bookname",
+        header: "Book name",
+        cell: (info) => {
+          const bookName = info.getValue<string>();
+          return bookName.length > 25 ? (
+            <span className="font-medium text-slate-800">
+              {bookName.slice(0, 25)}...
+            </span>
+          ) : (
+            <span className="font-medium text-slate-800">{bookName}</span>
+          );
+        },
       },
-    }),
-    // columnHelper.display("Book quantity",{
-    //   id: "actions",
-    //   header: "Actions",
-    //   cell: (info) => {
-    //     const rowData = info.row;
-    //     console.log("row -> ", rowData)
-    //     return (
-    //       <button
-    //         onClick={() => showStudents(rowData.id)}
-    //         className="bg-blue-600 text-white cursor-pointer"
-    //       >
-    //         show Students
-    //       </button>
-    //     );
-    //   },
-    // }),
-  ];
+      {
+        accessorKey: "issueCount",
+        header: "Total issue count",
+        cell: ({ row }) => (
+          <button
+            type="button"
+            onClick={() => showStudents(row.original)}
+            className="cursor-pointer rounded-lg bg-[#4099ff] px-3 py-1 text-xs font-medium text-white tabular-nums hover:bg-[#2b8cff]"
+          >
+            {row.original.issueCount}
+          </button>
+        ),
+      },
+      {
+        accessorKey: "quantity",
+        header: "Available quantity",
+        cell: (info) => {
+          const left = info.getValue<number>();
+
+          return (
+            <span className="rounded-lg px-2 py-0.5 text-xs font-medium">
+              {left}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "total_students",
+        header: "Late Students",
+        cell: ({ row }) => (
+          <button
+            type="button"
+            onClick={() => showFinedStu(row.original.id)}
+            className="cursor-pointer rounded-lg bg-[#4099ff] px-3 py-1 text-xs font-medium text-white tabular-nums hover:bg-[#2b8cff]"
+          >
+            {row.original.total_students}
+          </button>
+        ),
+      },
+    ],
+    [openBookId],
+  );
 
   const table = useReactTable({
     data: books,
@@ -190,7 +263,7 @@ export default function ReportList() {
           type="search"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search name, author or ISBN"
+          placeholder="Search book name"
           className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-2.5 pr-3 pl-11 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#f5b700] focus:bg-white focus:ring-4 focus:ring-amber-100 focus:outline-none"
         />
       </div>
@@ -247,7 +320,7 @@ export default function ReportList() {
                   colSpan={columns.length}
                   className="px-4 py-12 text-center text-slate-400"
                 >
-                  Loading books…
+                  Loading report…
                 </td>
               </tr>
             )}
@@ -258,38 +331,94 @@ export default function ReportList() {
                   colSpan={columns.length}
                   className="px-4 py-12 text-center text-slate-500"
                 >
-                  {search ? (
-                    `No book matches "${search}".`
-                  ) : (
-                    <>
-                      No books yet.{" "}
-                      <Link
-                        to="/books/add"
-                        className="font-medium text-[#c8860d] underline underline-offset-4"
-                      >
-                        Add the first one.
-                      </Link>
-                    </>
-                  )}
+                  {search
+                    ? `No book matches "${search}".`
+                    : "No books have been issued yet."}
                 </td>
               </tr>
             )}
 
             {!loading &&
               rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3 text-slate-600">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </td>
-                  ))}
-                </tr>
+                <Fragment key={row.id}>
+                  <tr className="border-b border-slate-100 hover:bg-slate-50/60">
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-4 py-3 text-slate-600">
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+
+                  {openBookId === row.original.id && (
+                    <tr className="border-b border-slate-100 bg-slate-50/60">
+                      <td colSpan={columns.length} className="px-4 py-3">
+                        {studentsLoading ? (
+                          <p className="text-sm text-slate-400">
+                            Loading students…
+                          </p>
+                        ) : students.length === 0 ? (
+                          <p className="text-sm text-slate-500">
+                            Nobody has this book right now.
+                          </p>
+                        ) : (
+                          <ul className="space-y-1">
+                            {students.map((student) => (
+                              <li
+                                key={student.id}
+                                className="flex items-center gap-2 text-sm text-slate-700"
+                              >
+                                <span className="font-medium">
+                                  {student.name}
+                                </span>
+                                <span className="text-xs text-slate-400 tabular-nums">
+                                  {student.rollno}
+                                </span>
+                                <span className="text-xs text-slate-400">
+                                  issued {formatDate(student.issuedate)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+
+                  {openFineBookId === row.original.id && (
+                    <tr className="border-b border-slate-100 bg-slate-50/60">
+                      <td colSpan={columns.length} className="px-4 py-3">
+                        {fineStudentsLoading ? (
+                          <p className="text-sm text-slate-400">
+                            Loading students…
+                          </p>
+                        ) : finedStudents.length === 0 ? (
+                          <p className="text-sm text-slate-500">
+                            Nobody has Fine.
+                          </p>
+                        ) : (
+                          <ul className="space-y-1">
+                            {finedStudents.map((student) => (
+                              <li
+                                key={student.rollno}
+                                className="flex items-center gap-2 text-sm text-slate-700"
+                              >
+                                <span className="font-medium">
+                                  {student.name}
+                                </span>
+                                <span className="text-xs text-slate-400 tabular-nums">
+                                  {student.rollno}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
           </tbody>
         </table>
