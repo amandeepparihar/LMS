@@ -48,7 +48,7 @@ export default function IssueBook() {
     const load = async () => {
       try {
         const [booksRes, studentsRes] = await Promise.all([
-          api.get("/books"),
+          api.get("/books/all"),
           api.get("/students"),
         ]);
 

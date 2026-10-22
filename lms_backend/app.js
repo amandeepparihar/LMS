@@ -9,6 +9,7 @@ import issueRoutes from "./routes/issue.route.js";
 import studentRoutes from "./routes/student.route.js";
 import bookIssued from "./routes/book.issued.route.js";
 import bookFine from "./routes/book.find.route.js"
+import bookDate from "./routes/book.date.route.js"
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/issued", bookIssued);
 app.use("/api/issues", issueRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/fine", bookFine)
+app.use("/api/date", bookDate);
 
 const start = async function () {
   try {

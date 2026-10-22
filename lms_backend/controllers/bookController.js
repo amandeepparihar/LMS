@@ -39,6 +39,8 @@ export const getBooks = async function (req, res) {
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.max(Number(req.query.limit) || 10, 1);
     const search = (req.query.search || "").trim();
+    //for dropdown
+    const { all } = req.query;
 
     const sortable = ["id", "bookname", "author", "isbn", "quantity"];
     const sortBy = sortable.includes(req.query.sortBy)
@@ -56,13 +58,25 @@ export const getBooks = async function (req, res) {
         }
       : {};
 
+    const data = await Book.findAll({
+      where: where,
+    })
+
+    console.log("all -> ", all);
+    if (all) {
+      return res.status(200).json({
+        success: true,
+        message: "Books fetched successfully",
+        data: data,
+      });
+    }
+
     const { rows, count } = await Book.findAndCountAll({
       where: where,
       order: [[sortBy, order]],
       limit: limit,
       offset: (page - 1) * limit,
     });
-
     return res.status(200).json({
       success: true,
       message: "Books fetched successfully",
@@ -352,8 +366,8 @@ export const getIssuedBooks = async function (req, res) {
     }
 
     console.log("final Data-> ", finalData);
-    const resData = Object.values(finalData)
-    console.log("res -> ", resData)
+    const resData = Object.values(finalData);
+    console.log("res -> ", resData);
     return res.status(200).json({
       success: true,
       message: "Report fetched successfully",
@@ -444,5 +458,85 @@ export const getFineStuCountByBookId = async function (req, res) {
       success: false,
       message: "Something went wrong",
     });
+  }
+};
+
+//book by date
+export const getBookbyDateRange = async function (req, res) {
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const limit = Math.max(Number(req.query.limit) || 10, 1);
+  try {
+    const { dateOne, dateTwo } = req.query;
+    if (!dateOne && !dateTwo) {
+      return res.status(400).json({
+        success: false,
+        message: "Both date required!",
+      });
+    }
+    // console.log("dateOne -> ", dateOne);
+    // console.log("dateTwo -> ", dateTwo);
+    const sortable = {
+      id: "i.bookId",
+      bookname: "b.bookname",
+      no_of_times_i: "no_of_times_i",
+      no_of_times_r: "no_of_times_r",
+    };
+    const sortBy = sortable[req.query.sortBy] || "b.id";
+    const order = req.query.order === "asc" ? "ASC" : "DESC";
+    const data = await sequelize.query(
+      `select
+        i."bookId",
+        b.bookname ,
+        count(case when i.status = 'issued' then 1 end) as no_of_times_i,
+	      count(case when i.status = 'returned' then 1 end) as no_of_times_r
+      from
+        issues i
+      join books b on
+        i."bookId" = b.id
+      where
+        (i.issuedate between :dateOne and :dateTwo)
+      group by
+        i."bookId",
+        b.bookname ,
+        b.id
+        ORDER BY ${sortBy} ${order}
+        LIMIT :limit OFFSET :offset`,
+      {
+        replacements: {
+          dateOne: dateOne,
+          dateTwo: dateTwo,
+          limit: limit,
+          offset: (page - 1) * limit,
+        },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    console.log("data - > ", data);
+
+    const [{ total }] = await sequelize.query(
+      `SELECT COUNT(DISTINCT i."bookId")::int AS total
+        FROM issues i`,
+      {
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    // console.log("total ->", total)
+
+    return res.status(200).json({
+      success: true,
+      message: "Report fetched successfully",
+      data: data,
+      meta: {
+        total: total,
+        page: page,
+        limit: limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({ message: "Something went wrong" });
   }
 };
