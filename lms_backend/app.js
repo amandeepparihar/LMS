@@ -8,7 +8,7 @@ import bookRoutes from "./routes/book.route.js";
 import issueRoutes from "./routes/issue.route.js";
 import studentRoutes from "./routes/student.route.js";
 import bookIssued from "./routes/book.issued.route.js";
-import bookFine from "./routes/book.find.route.js"
+import bookFine from "./routes/book.fine.route.js"
 import bookDate from "./routes/book.date.route.js"
 
 const app = express();

@@ -49,7 +49,7 @@ export default function IssueBook() {
       try {
         const [booksRes, studentsRes] = await Promise.all([
           api.get("/books/all"),
-          api.get("/students"),
+          api.get("/students/all"),
         ]);
 
         setBooks(booksRes.data.data);
@@ -77,7 +77,7 @@ export default function IssueBook() {
         studentId: Number(values.studentId),
         issuedate: values.issuedate,
       });
-      toast.success("Book Issued")
+      toast.success("Book Issued");
 
       navigate("/issues");
     } catch (err) {
@@ -88,7 +88,7 @@ export default function IssueBook() {
         setError("bookId", { message }, { shouldFocus: true });
         return;
       }
-      toast.error(message)
+      toast.error(message);
       setApiError(message);
     }
   };

@@ -36,9 +36,14 @@ interface IssuedTo {
   rollno: string;
 }
 
+interface OpenPanel {
+  bookId: number;
+  kind: "issued" | "fine";
+}
+
 const formatDate = (value: string) => new Date(value).toLocaleDateString();
 
-export default function ReportList() {
+export default function BookReportList() {
   const [books, setBooks] = useState<Report[]>([]);
   const [totalPages, setTotalPages] = useState(0);
 
@@ -56,12 +61,9 @@ export default function ReportList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [openBookId, setOpenBookId] = useState<number | null>(null);
-  const [openFineBookId, setOpenFineBookId] = useState<number | null>(null);
-  const [students, setStudents] = useState<IssuedTo[]>([]);
-  const [finedStudents, setFinedStudents] = useState<IssuedTo[]>([]);
-  const [studentsLoading, setStudentsLoading] = useState(false);
-  const [fineStudentsLoading, setFineStudentsLoading] = useState(false);
+  const [panel, setPanel] = useState<OpenPanel | null>(null);
+  const [panelRows, setPanelRows] = useState<IssuedTo[]>([]);
+  const [panelLoading, setPanelLoading] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -73,6 +75,34 @@ export default function ReportList() {
 
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  const openPanel = async (bookId: number, kind: "issued" | "fine") => {
+    if (panel && panel.bookId === bookId && panel.kind === kind) {
+      setPanel(null);
+      return;
+    }
+
+    setError("");
+    setPanel({ bookId: bookId, kind: kind });
+    setPanelRows([]);
+    setPanelLoading(true);
+
+    try {
+      const url = kind === "issued" ? `/issued/${bookId}` : `/fine/${bookId}`;
+      const res = await api.get(url);
+      console.log("data => ",res.data.data);
+      setPanelRows(res.data.data);
+    } catch (err) {
+      setError(
+        axios.isAxiosError(err)
+          ? (err.response?.data?.message ?? "Couldn't load the students.")
+          : "Couldn't load the students.",
+      );
+      setPanel(null);
+    } finally {
+      setPanelLoading(false);
+    }
+  };
 
   useEffect(() => {
     const loadReport = async () => {
@@ -91,11 +121,9 @@ export default function ReportList() {
           },
         });
 
-        console.log("data -> ", res.data.data);
-
         setBooks(res.data.data);
         setTotalPages(res.data.meta.totalPages);
-        setOpenBookId(null);
+        setPanel(null);
       } catch (err) {
         setError(
           axios.isAxiosError(err)
@@ -109,60 +137,6 @@ export default function ReportList() {
 
     loadReport();
   }, [pagination, sorting, search]);
-
-  const showStudents = async (book: Report) => {
-    if (openBookId === book.id) {
-      setOpenBookId(null);
-      return;
-    }
-
-    setError("");
-    setOpenBookId(book.id);
-    setStudents([]);
-    setStudentsLoading(true);
-
-    try {
-      const res = await api.get(`/issued/${book.id}`);
-      setStudents(res.data.data);
-    } catch (err) {
-      setError(
-        axios.isAxiosError(err)
-          ? (err.response?.data?.message ?? "Couldn't load the students.")
-          : "Couldn't load the students.",
-      );
-      setOpenBookId(null);
-    } finally {
-      setStudentsLoading(false);
-    }
-  };
-
-  const showFinedStu = async (id: number) => {
-    // console.log("id -> ", id);
-    if (openFineBookId === id) {
-      setOpenFineBookId(null);
-      return;
-    }
-
-    setError("");
-    setOpenFineBookId(id);
-    setFinedStudents([]);
-    setFineStudentsLoading(true);
-
-    try {
-      const res = await api.get(`/fine/${id}`);
-      // console.log("res -> ", res.data.data);
-      setFinedStudents(res.data.data);
-    } catch (err) {
-      setError(
-        axios.isAxiosError(err)
-          ? (err.response?.data?.message ?? "Couldn't load the students.")
-          : "Couldn't load the students.",
-      );
-      setOpenFineBookId(null);
-    } finally {
-      setFineStudentsLoading(false);
-    }
-  };
 
   const columns = useMemo<ColumnDef<Report>[]>(
     () => [
@@ -186,7 +160,7 @@ export default function ReportList() {
         cell: ({ row }) => (
           <button
             type="button"
-            onClick={() => showStudents(row.original)}
+            onClick={() => openPanel(row.original.id, "issued")}
             className="cursor-pointer rounded-lg bg-[#4099ff] px-3 py-1 text-xs font-medium text-white tabular-nums hover:bg-[#2b8cff]"
           >
             {row.original.issueCount}
@@ -212,7 +186,7 @@ export default function ReportList() {
         cell: ({ row }) => (
           <button
             type="button"
-            onClick={() => showFinedStu(row.original.id)}
+            onClick={() => openPanel(row.original.id, "fine")}
             className="cursor-pointer rounded-lg bg-[#4099ff] px-3 py-1 text-xs font-medium text-white tabular-nums hover:bg-[#2b8cff]"
           >
             {row.original.total_students}
@@ -220,7 +194,7 @@ export default function ReportList() {
         ),
       },
     ],
-    [openBookId],
+    [panel],
   );
 
   const table = useReactTable({
@@ -352,20 +326,22 @@ export default function ReportList() {
                     ))}
                   </tr>
 
-                  {openBookId === row.original.id && (
+                  {panel && panel.bookId === row.original.id && (
                     <tr className="border-b border-slate-100 bg-slate-50/60">
                       <td colSpan={columns.length} className="px-4 py-3">
-                        {studentsLoading ? (
+                        {panelLoading ? (
                           <p className="text-sm text-slate-400">
                             Loading students…
                           </p>
-                        ) : students.length === 0 ? (
+                        ) : panelRows.length === 0 ? (
                           <p className="text-sm text-slate-500">
-                            Nobody has this book right now.
+                            {panel.kind === "issued"
+                              ? "Nobody has this book right now."
+                              : "No late students for this book."}
                           </p>
                         ) : (
                           <ul className="space-y-1">
-                            {students.map((student) => (
+                            {panelRows.map((student) => (
                               <li
                                 key={student.id}
                                 className="flex items-center gap-2 text-sm text-slate-700"
@@ -376,41 +352,11 @@ export default function ReportList() {
                                 <span className="text-xs text-slate-400 tabular-nums">
                                   {student.rollno}
                                 </span>
-                                <span className="text-xs text-slate-400">
-                                  issued {formatDate(student.issuedate)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-
-                  {openFineBookId === row.original.id && (
-                    <tr className="border-b border-slate-100 bg-slate-50/60">
-                      <td colSpan={columns.length} className="px-4 py-3">
-                        {fineStudentsLoading ? (
-                          <p className="text-sm text-slate-400">
-                            Loading students…
-                          </p>
-                        ) : finedStudents.length === 0 ? (
-                          <p className="text-sm text-slate-500">
-                            Nobody has Fine.
-                          </p>
-                        ) : (
-                          <ul className="space-y-1">
-                            {finedStudents.map((student) => (
-                              <li
-                                key={student.rollno}
-                                className="flex items-center gap-2 text-sm text-slate-700"
-                              >
-                                <span className="font-medium">
-                                  {student.name}
-                                </span>
-                                <span className="text-xs text-slate-400 tabular-nums">
-                                  {student.rollno}
-                                </span>
+                                {student.issuedate && (
+                                  <span className="text-xs text-slate-400">
+                                    issued {formatDate(student.issuedate)}
+                                  </span>
+                                )}
                               </li>
                             ))}
                           </ul>

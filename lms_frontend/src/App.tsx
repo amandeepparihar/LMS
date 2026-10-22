@@ -10,7 +10,7 @@ import IssueBook from "./pages/IssueBook";
 import StudentList from "./pages/StudentList";
 import AddStudent from "./pages/AddStudent";
 import EditStudent from "./pages/EditStudent";
-import ReportList from "./pages/ReportList";
+import BookReportList from "./pages/BookReportList";
 import IssueReportList from "./pages/IssueReportList";
 
 export default function App() {
@@ -34,7 +34,7 @@ export default function App() {
 
           <Route path="/students/:id/edit" element={<EditStudent />} />
 
-          <Route path="/reports" element={<ReportList />} />
+          <Route path="/reports" element={<BookReportList />} />
           <Route path="/issue-report" element={<IssueReportList />} />
         </Route>
       </Route>

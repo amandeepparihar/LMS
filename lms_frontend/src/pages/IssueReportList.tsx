@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -22,28 +22,37 @@ import api from "../api";
 import { useForm } from "react-hook-form";
 
 interface Report {
-  id: number;
+  bookId: number;
   bookname: string;
-  no_of_times_i: string;
-  no_of_times_r: string;
+  no_of_times_i: number;
+  no_of_times_r: number;
 }
-
-const today = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  .toISOString()
-  .slice(0, 10);
 
 interface IssueFormState {
   rangeOne: string;
   rangeTwo: string;
 }
 
+const toLocalDate = (date: Date) => {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+};
+
+const today = toLocalDate(new Date());
+const oneWeekAgo = toLocalDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+
 export default function ReportList() {
   const [books, setBooks] = useState<Report[]>([]);
   const [totalPages, setTotalPages] = useState(0);
 
+  const [range, setRange] = useState({
+    dateOne: oneWeekAgo,
+    dateTwo: today,
+  });
+
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "issueCount", desc: true },
+    { id: "no_of_times_i", desc: true },
   ]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -53,12 +62,16 @@ export default function ReportList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [openBookId, setOpenBookId] = useState<number | null>(null);
-  // const [openFineBookId, setOpenFineBookId] = useState<number | null>(null);
-  // const [students, setStudents] = useState<IssuedTo[]>([]);
-  // const [finedStudents, setFinedStudents] = useState<IssuedTo[]>([]);
-  // const [studentsLoading, setStudentsLoading] = useState(false);
-  // const [fineStudentsLoading, setFineStudentsLoading] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<IssueFormState>({
+    defaultValues: {
+      rangeOne: oneWeekAgo,
+      rangeTwo: today,
+    },
+  });
 
   useEffect(() => {
     const loadReport = async () => {
@@ -67,13 +80,10 @@ export default function ReportList() {
       try {
         const sort = sorting[0];
 
-        console.log("dateOne -> ", today);
-        console.log("dateTwo -> ", oneWeekAgo);
-
-        const res = await api.get("/date/", {
+        const res = await api.get("/date", {
           params: {
-            dateOne: oneWeekAgo,
-            dateTwo: today,
+            dateOne: range.dateOne,
+            dateTwo: range.dateTwo,
             page: pagination.pageIndex + 1,
             limit: pagination.pageSize,
             sortBy: sort ? sort.id : undefined,
@@ -81,11 +91,9 @@ export default function ReportList() {
           },
         });
 
-        console.log("data -> ", res);
-
         setBooks(res.data.data);
         setTotalPages(res.data.meta.totalPages);
-        setOpenBookId(null);
+        setError("");
       } catch (err) {
         setError(
           axios.isAxiosError(err)
@@ -98,34 +106,13 @@ export default function ReportList() {
     };
 
     loadReport();
-  }, [pagination, sorting]);
+  }, [pagination, sorting, range]);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<IssueFormState>({
-    defaultValues: {
-      rangeOne: oneWeekAgo,
-      rangeTwo: today,
-    },
-  });
-
-  const onSubmit = async (values: IssueFormState) => {
-    console.log("values ->", values);
-    try {
-      //api call
-      const res = await api.get("/date/", {
-        params: {
-          dateOne: values.rangeOne,
-          dateTwo: values.rangeTwo,
-        },
-      });
-      console.log("res -> ", res);
-      setBooks(res.data.data);
-    } catch (error) {
-      console.log("error -> ", error);
-    }
+  const onSubmit = (values: IssueFormState) => {
+    setRange({ dateOne: values.rangeOne, dateTwo: values.rangeTwo });
+    setPagination((prev) =>
+      prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 },
+    );
   };
 
   const columns = useMemo<ColumnDef<Report>[]>(
@@ -133,13 +120,11 @@ export default function ReportList() {
       {
         accessorKey: "bookId",
         header: "Book Id",
-        cell: (info) => {
-          return (
-            <span className="font-medium text-slate-800">
-              {info.getValue<string>()}
-            </span>
-          );
-        },
+        cell: (info) => (
+          <span className="font-medium text-slate-800 tabular-nums">
+            {info.getValue<number>()}
+          </span>
+        ),
       },
       {
         accessorKey: "bookname",
@@ -151,36 +136,30 @@ export default function ReportList() {
               {bookName.slice(0, 25)}...
             </span>
           ) : (
-            <span className="font-medium text-slate-800">
-              {info.getValue<string>()}
-            </span>
+            <span className="font-medium text-slate-800">{bookName}</span>
           );
         },
       },
       {
         accessorKey: "no_of_times_i",
         header: "Total issue count",
-        cell: ({ row }) => {
-          return (
-            <div className="font-medium text-slate-800">
-              {row.original.no_of_times_i}
-            </div>
-          );
-        },
+        cell: (info) => (
+          <span className="font-medium text-slate-800 tabular-nums">
+            {info.getValue<number>()}
+          </span>
+        ),
       },
       {
         accessorKey: "no_of_times_r",
         header: "Total Return count",
-        cell: ({ row }) => {
-          return (
-            <div className="font-medium text-slate-800">
-              {row.original.no_of_times_r}
-            </div>
-          );
-        },
+        cell: (info) => (
+          <span className="font-medium text-slate-800 tabular-nums">
+            {info.getValue<number>()}
+          </span>
+        ),
       },
     ],
-    [openBookId],
+    [],
   );
 
   const table = useReactTable({
@@ -198,6 +177,9 @@ export default function ReportList() {
 
   const rows = table.getRowModel().rows;
 
+  const inputClass =
+    "w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-sm text-slate-800 focus:border-[#f5b700] focus:bg-white focus:ring-4 focus:ring-amber-100 focus:outline-none";
+
   return (
     <div className="mx-auto max-w-5xl px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -208,29 +190,49 @@ export default function ReportList() {
         </div>
       </div>
 
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="relative mb-4 max-w-sm flex gap-2"
-      >
-        <input
-          type="date"
-          id="rangeOne"
-          className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-2.5 pr-3 pl-11 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#f5b700] focus:bg-white focus:ring-4 focus:ring-amber-100 focus:outline-none"
-          {...register("rangeOne", {
-            required: "Pick a date",
-          })}
-        />
-        <input
-          type="date"
-          id="rangeTwo"
-          className="w-full rounded-lg border border-slate-200 bg-slate-50/70 py-2.5 pr-3 pl-11 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#f5b700] focus:bg-white focus:ring-4 focus:ring-amber-100 focus:outline-none"
-          {...register("rangeTwo", {
-            required: "Pick a date",
-          })}
-        />
-        <button className="border-1 rounded-md border-slate-200 px-4 ">
-          <SearchIcon />
-        </button>
+      {error && (
+        <p
+          role="alert"
+          className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
+          {error}
+        </p>
+      )}
+
+      <form onSubmit={handleSubmit(onSubmit)} className="mb-4" noValidate>
+        <div className="flex max-w-xl gap-2">
+          <input
+            type="date"
+            id="rangeOne"
+            max={today}
+            className={inputClass}
+            {...register("rangeOne", { required: "Pick a date" })}
+          />
+          <input
+            type="date"
+            id="rangeTwo"
+            max={today}
+            className={inputClass}
+            {...register("rangeTwo", {
+              required: "Pick a date",
+              validate: (value, form) =>
+                value >= form.rangeOne || "End date is before the start date",
+            })}
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="cursor-pointer rounded-lg border border-slate-200 px-4 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <SearchIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {(errors.rangeOne || errors.rangeTwo) && (
+          <p className="mt-1.5 text-xs text-red-600">
+            {errors.rangeOne?.message ?? errors.rangeTwo?.message}
+          </p>
+        )}
       </form>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -296,25 +298,26 @@ export default function ReportList() {
                   colSpan={columns.length}
                   className="px-4 py-12 text-center text-slate-500"
                 >
-                  No books have been issued yet
+                  No books were issued or returned in this range.
                 </td>
               </tr>
             )}
 
             {!loading &&
               rows.map((row) => (
-                <Fragment key={row.id}>
-                  <tr className="border-b border-slate-100 hover:bg-slate-50/60">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3 text-slate-600">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                </Fragment>
+                <tr
+                  key={row.id}
+                  className="border-b border-slate-100 hover:bg-slate-50/60"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-4 py-3 text-slate-600">
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </td>
+                  ))}
+                </tr>
               ))}
           </tbody>
         </table>

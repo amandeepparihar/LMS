@@ -23,15 +23,7 @@ function removeUpload(filename) {
 //getallStudents
 export const getStudents = async function (req, res) {
   try {
-    const page = Math.max(Number(req.query.page) || 1, 1);
-    const limit = Math.max(Number(req.query.limit) || 10, 1);
     const search = (req.query.search || "").trim();
-
-    const sortable = ["id", "name", "rollno", "phoneno", "city"];
-    const sortBy = sortable.includes(req.query.sortBy)
-      ? req.query.sortBy
-      : "id";
-    const order = req.query.order === "asc" ? "ASC" : "DESC";
 
     const where = search
       ? {
@@ -42,6 +34,29 @@ export const getStudents = async function (req, res) {
           ],
         }
       : {};
+
+    //for dropdown
+    if (req.path === "/all") {
+      const data = await Student.findAll({
+        where: where,
+        attributes: ["id", "name", "rollno"],
+        order: [["name", "ASC"]],
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Students fetched successfully",
+        data: data,
+      });
+    }
+
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.max(Number(req.query.limit) || 10, 1);
+    const sortable = ["id", "name", "rollno", "phoneno", "city"];
+    const sortBy = sortable.includes(req.query.sortBy)
+      ? req.query.sortBy
+      : "id";
+    const order = req.query.order === "asc" ? "ASC" : "DESC";
 
     const { rows, count } = await Student.findAndCountAll({
       where: where,
